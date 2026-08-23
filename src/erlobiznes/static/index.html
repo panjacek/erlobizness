@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ErloBiznes - Biznesowa Przygoda</title>
-    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link rel="stylesheet" href="/static/style.css?v=9">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
 </head>
 
@@ -13,6 +13,14 @@
     <div class="app-container">
         <header>
             <h1>ErloBiznes</h1>
+            <div class="header-right">
+                <select id="theme-select" class="theme-select" aria-label="Motyw">
+                    <option value="paper">Klasyczny papier</option>
+                    <option value="dark">Ciemny</option>
+                    <option value="light">Jasny minimal</option>
+                    <option value="retro">Retro CRT</option>
+                </select>
+            </div>
         </header>
 
         <main>
@@ -45,8 +53,7 @@
                             </div>
                             <div id="dice-total" class="dice-total">0</div>
                         </div>
-                        <button id="trade-btn" class="btn" data-i18n="Handluj"
-                            style="width: 100%; height: 50px; font-size: 1.2rem; border-radius: 1rem; margin-bottom: 1rem; background-color: #f39c12; color: white; display: none;">Handluj</button>
+                        <button id="trade-btn" class="btn secondary" data-i18n="Handluj" style="display: none;">Handluj</button>
                         <button id="roll-btn" class="btn primary" data-i18n="Rzuć kośćmi"
                             style="width: 100%; height: 70px; font-size: 1.4rem; border-radius: 1.5rem;">Rzuć
                             kośćmi</button>
@@ -62,16 +69,6 @@
     </div>
 
     <!-- Modals -->
-    <style>
-        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
-        .modal-content { background-color: var(--bg-card); margin: 15% auto; padding: 20px; border-radius: 1rem; width: 80%; max-width: 400px; color: var(--text-main); }
-        .modal-content h3 { margin-top: 0; }
-        .modal-content label { display: block; margin-top: 10px; margin-bottom: 5px; }
-        .modal-content select, .modal-content input { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; background: var(--bg-main); color: var(--text-main); }
-        .modal-actions { display: flex; justify-content: space-between; margin-top: 20px; gap: 10px; }
-        .modal-actions button { flex: 1; padding: 10px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; }
-    </style>
-
     <div id="trade-init-modal" class="modal">
         <div class="modal-content">
             <h3 data-i18n="Zaproponuj Handel">Zaproponuj Handel</h3>
@@ -101,11 +98,11 @@
                 <label data-i18n="Nowa cena ($):">Nowa cena ($):</label>
                 <input type="number" id="trade-counter-price" min="1" step="1">
             </div>
-            <div class="modal-actions" style="flex-wrap: wrap;">
-                <button id="trade-btn-accept" class="btn primary" data-i18n="Akceptuj" style="background-color: #4CAF50; color:white;">Akceptuj</button>
-                <button id="trade-btn-reject" class="btn secondary" data-i18n="Odrzuć" style="background-color: #f44336; color:white;">Odrzuć</button>
-                <button id="trade-btn-counter" class="btn secondary" data-i18n="Kontroferta" style="background-color: #2196F3; color:white;">Kontroferta</button>
-                <button id="trade-btn-send-counter" class="btn primary" data-i18n="Wyślij Kontrofertę" style="display:none; width: 100%; margin-top: 10px;">Wyślij Kontrofertę</button>
+            <div class="modal-actions">
+                <button id="trade-btn-accept" class="btn success" data-i18n="Akceptuj">Akceptuj</button>
+                <button id="trade-btn-reject" class="btn danger" data-i18n="Odrzuć">Odrzuć</button>
+                <button id="trade-btn-counter" class="btn secondary" data-i18n="Kontroferta">Kontroferta</button>
+                <button id="trade-btn-send-counter" class="btn primary" data-i18n="Wyślij Kontrofertę" style="display:none;">Wyślij Kontrofertę</button>
             </div>
         </div>
     </div>
@@ -131,7 +128,7 @@
         </div>
     </div>
 
-    <script src="/static/main.js?v=10"></script>
+    <script src="/static/main.js?v=11"></script>
 </body>
 
 </html>

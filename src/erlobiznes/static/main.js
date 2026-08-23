@@ -512,5 +512,25 @@ function translateDOM() {
     }
 }
 
+// Theme switching
+const themeSelect = document.getElementById("theme-select");
+const THEME_KEY = "erlobiznes-theme";
+const THEMES = ["paper", "dark", "light", "retro"];
+
+function applyTheme(theme) {
+	const active = THEMES.includes(theme) ? theme : "paper";
+	document.documentElement.dataset.theme = active;
+	if (themeSelect) themeSelect.value = active;
+}
+
+applyTheme(localStorage.getItem(THEME_KEY));
+
+if (themeSelect) {
+	themeSelect.addEventListener("change", () => {
+		applyTheme(themeSelect.value);
+		localStorage.setItem(THEME_KEY, themeSelect.value);
+	});
+}
+
 // Initial load
 loadLanguage().then(() => fetchState());
