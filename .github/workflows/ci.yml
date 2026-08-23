@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --- backend: python -----------------------------------------------------
+  python-lint:
+    name: python / lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - name: Sync python env
+        run: uv sync
+      - name: Ruff check + format check
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+  python-unit:
+    name: python / unit tests (pytest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - name: Sync python env
+        run: uv sync
+      - name: Pytest (with coverage)
+        run: make coverage
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python
+          path: coverage.xml
+          if-no-files-found: warn
+
+  # --- frontend: js ----------------------------------------------------------
+  js-lint:
+    name: js / lint (biome)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install js deps
+        run: npm install
+      - name: Biome lint
+        run: npx @biomejs/biome lint .
+
+  js-unit:
+    name: js / unit tests (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install js deps
+        run: npm install
+      - name: Vitest
+        run: npx vitest run
+
+  # --- e2e: real browser -----------------------------------------------------
+  # Needs both stacks: uvicorn (python) is booted by the playwright webServer,
+  # the suite runs in Chromium. Runs after lint+unit jobs prove basics sound.
+  e2e:
+    name: e2e / browser tests (playwright)
+    needs: [python-lint, python-unit, js-lint, js-unit]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Sync python env
+        run: uv sync
+      - name: Install js deps
+        run: npm install
+      - name: Install Chromium with system deps
+        run: npx playwright install --with-deps chromium
+      - name: Playwright E2E (webServer boots uvicorn)
+        run: npx playwright test

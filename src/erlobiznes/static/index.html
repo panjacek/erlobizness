@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pl">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ErloBiznes - Biznesowa Przygoda</title>
+    <link rel="stylesheet" href="/static/style.css?v=7">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div class="app-container">
+        <header>
+            <h1>ErloBiznes</h1>
+        </header>
+
+        <main>
+            <div class="game-layout">
+                <div class="left-panel">
+                    <div id="player-stats" class="stats-container">
+                        <!-- Player stats will be injected here -->
+                    </div>
+                    <div id="log-container" class="log-container">
+                        <h3 data-i18n="Dziennik zdarzeń">Dziennik zdarzeń</h3>
+                        <div id="game-log" class="game-log"></div>
+                    </div>
+                </div>
+
+                <div class="center-panel">
+                    <div id="board-container" class="board-container">
+                        <!-- Board fields will be injected here -->
+                        <div class="board-center-decoration">
+                            <div class="board-logo">ErloBiznes</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="right-panel">
+                    <div class="dice-section">
+                        <div id="dice-container" class="dice-container" style="display: none;">
+                            <div class="dice-label" data-i18n="Wynik rzutu">Wynik rzutu</div>
+                            <div id="dice-visual" class="dice-visual">
+                                <!-- Dice will be injected here -->
+                            </div>
+                            <div id="dice-total" class="dice-total">0</div>
+                        </div>
+                        <button id="trade-btn" class="btn" data-i18n="Handluj"
+                            style="width: 100%; height: 50px; font-size: 1.2rem; border-radius: 1rem; margin-bottom: 1rem; background-color: #f39c12; color: white; display: none;">Handluj</button>
+                        <button id="roll-btn" class="btn primary" data-i18n="Rzuć kośćmi"
+                            style="width: 100%; height: 70px; font-size: 1.4rem; border-radius: 1.5rem;">Rzuć
+                            kośćmi</button>
+                    </div>
+
+                    <div class="bottom-actions">
+                        <button id="reset-btn" class="btn secondary" data-i18n="Resetuj grę" style="width: 100%; opacity: 0.6;">Resetuj
+                            grę</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <style>
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: var(--bg-card); margin: 15% auto; padding: 20px; border-radius: 1rem; width: 80%; max-width: 400px; color: var(--text-main); }
+        .modal-content h3 { margin-top: 0; }
+        .modal-content label { display: block; margin-top: 10px; margin-bottom: 5px; }
+        .modal-content select, .modal-content input { width: 100%; padding: 8px; border-radius: 5px; border: 1px solid #ccc; background: var(--bg-main); color: var(--text-main); }
+        .modal-actions { display: flex; justify-content: space-between; margin-top: 20px; gap: 10px; }
+        .modal-actions button { flex: 1; padding: 10px; border-radius: 5px; cursor: pointer; border: none; font-weight: bold; }
+    </style>
+
+    <div id="trade-init-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="Zaproponuj Handel">Zaproponuj Handel</h3>
+            <label data-i18n="Gracz:">Gracz:</label>
+            <select id="trade-target-select"></select>
+            <label data-i18n="Akcja:">Akcja:</label>
+            <select id="trade-action-select">
+                <option value="buy" data-i18n="Chcę kupić (od niego)">Chcę kupić (od niego)</option>
+                <option value="sell" data-i18n="Chcę sprzedać (jemu)">Chcę sprzedać (jemu)</option>
+            </select>
+            <label data-i18n="Nieruchomość:">Nieruchomość:</label>
+            <select id="trade-property-select"></select>
+            <label data-i18n="Cena ($):">Cena ($):</label>
+            <input type="number" id="trade-price-input" value="1000" min="1" step="1">
+            <div class="modal-actions">
+                <button id="trade-init-send" class="btn primary" data-i18n="Wyślij">Wyślij</button>
+                <button id="trade-init-cancel" class="btn secondary" data-i18n="Anuluj">Anuluj</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="trade-respond-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="Oferta Handlowa">Oferta Handlowa</h3>
+            <p id="trade-respond-text"></p>
+            <div id="trade-counter-section" style="display:none; margin-top: 10px;">
+                <label data-i18n="Nowa cena ($):">Nowa cena ($):</label>
+                <input type="number" id="trade-counter-price" min="1" step="1">
+            </div>
+            <div class="modal-actions" style="flex-wrap: wrap;">
+                <button id="trade-btn-accept" class="btn primary" data-i18n="Akceptuj" style="background-color: #4CAF50; color:white;">Akceptuj</button>
+                <button id="trade-btn-reject" class="btn secondary" data-i18n="Odrzuć" style="background-color: #f44336; color:white;">Odrzuć</button>
+                <button id="trade-btn-counter" class="btn secondary" data-i18n="Kontroferta" style="background-color: #2196F3; color:white;">Kontroferta</button>
+                <button id="trade-btn-send-counter" class="btn primary" data-i18n="Wyślij Kontrofertę" style="display:none; width: 100%; margin-top: 10px;">Wyślij Kontrofertę</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="buy-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="Decyzja o zakupie">Decyzja o zakupie</h3>
+            <p id="buy-modal-text"></p>
+            <div class="modal-actions">
+                <button id="buy-accept" class="btn primary" data-i18n="Kup">Kup</button>
+                <button id="buy-decline" class="btn secondary" data-i18n="Pomiń">Pomiń</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="game-over-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="Koniec Gry">Koniec Gry</h3>
+            <p id="game-over-text"></p>
+            <div class="modal-actions">
+                <button id="game-over-reset" class="btn primary" data-i18n="Resetuj grę">Resetuj grę</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/main.js?v=10"></script>
+</body>
+
+</html>

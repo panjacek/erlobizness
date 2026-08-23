@@ -1,0 +1,341 @@
+{
+	"pl": [
+		{
+			"id": 1,
+			"__name__": "Start",
+			"type": "start",
+			"reward": 400
+		},
+		{
+			"id": 2,
+			"__name__": "Saloniki",
+			"type": "city",
+			"country": "Grecja",
+			"price": 120,
+			"rent": [4, 20, 60, 180, 320, 500],
+			"house_cost": 100,
+			"mortgage": 60
+		},
+		{
+			"id": 3,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "blue"
+		},
+		{
+			"id": 4,
+			"__name__": "Ateny",
+			"type": "city",
+			"country": "Grecja",
+			"price": 120,
+			"rent": [8, 40, 120, 360, 640, 900],
+			"house_cost": 100,
+			"mortgage": 60
+		},
+		{
+			"id": 5,
+			"__name__": "Parking Strzeżony",
+			"type": "tax",
+			"cost": 400
+		},
+		{
+			"id": 6,
+			"__name__": "Koleje Południowe",
+			"type": "railway",
+			"price": 400,
+			"rent": [50, 100, 200, 400],
+			"mortgage": 200
+		},
+		{
+			"id": 7,
+			"__name__": "Neapol",
+			"type": "city",
+			"country": "Włochy",
+			"price": 200,
+			"rent": [12, 60, 180, 540, 800, 1100],
+			"house_cost": 100,
+			"mortgage": 100
+		},
+		{
+			"id": 8,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "red"
+		},
+		{
+			"id": 9,
+			"__name__": "Mediolan",
+			"type": "city",
+			"country": "Włochy",
+			"price": 200,
+			"rent": [12, 60, 180, 540, 800, 1100],
+			"house_cost": 100,
+			"mortgage": 100
+		},
+		{
+			"id": 10,
+			"__name__": "Rzym",
+			"type": "city",
+			"country": "Włochy",
+			"price": 240,
+			"rent": [16, 80, 200, 600, 900, 1200],
+			"house_cost": 100,
+			"mortgage": 120
+		},
+		{
+			"id": 11,
+			"__name__": "Więzienie",
+			"type": "jail"
+		},
+		{
+			"id": 12,
+			"__name__": "Barcelona",
+			"type": "city",
+			"country": "Hiszpania",
+			"price": 280,
+			"rent": [20, 100, 300, 900, 1250, 1500],
+			"house_cost": 200,
+			"mortgage": 140
+		},
+		{
+			"id": 13,
+			"__name__": "Elektrownia",
+			"type": "utility",
+			"price": 300,
+			"rent_multiplier": [8, 20],
+			"mortgage": 150
+		},
+		{
+			"id": 14,
+			"__name__": "Sewilla",
+			"type": "city",
+			"country": "Hiszpania",
+			"price": 280,
+			"rent": [20, 100, 300, 900, 1250, 1500],
+			"house_cost": 200,
+			"mortgage": 140
+		},
+		{
+			"id": 15,
+			"__name__": "Madryt",
+			"type": "city",
+			"country": "Hiszpania",
+			"price": 320,
+			"rent": [24, 120, 360, 1000, 1400, 1800],
+			"house_cost": 200,
+			"mortgage": 160
+		},
+		{
+			"id": 16,
+			"__name__": "Koleje Zachodnie",
+			"type": "railway",
+			"price": 400,
+			"rent": [50, 100, 200, 400],
+			"mortgage": 200
+		},
+		{
+			"id": 17,
+			"__name__": "Liverpool",
+			"type": "city",
+			"country": "Anglia",
+			"price": 360,
+			"rent": [28, 140, 400, 1100, 1500, 1900],
+			"house_cost": 200,
+			"mortgage": 180
+		},
+		{
+			"id": 18,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "blue"
+		},
+		{
+			"id": 19,
+			"__name__": "Glasgow",
+			"type": "city",
+			"country": "Anglia",
+			"price": 360,
+			"rent": [28, 140, 400, 1100, 1500, 1900],
+			"house_cost": 200,
+			"mortgage": 180
+		},
+		{
+			"id": 20,
+			"__name__": "Londyn",
+			"type": "city",
+			"country": "Anglia",
+			"price": 400,
+			"rent": [32, 160, 440, 1200, 1600, 2000],
+			"house_cost": 200,
+			"mortgage": 200
+		},
+		{
+			"id": 21,
+			"__name__": "Darmowy Parking",
+			"type": "parking"
+		},
+		{
+			"id": 22,
+			"__name__": "Rotterdam",
+			"type": "city",
+			"country": "Benelux",
+			"price": 440,
+			"rent": [36, 180, 500, 1400, 1750, 2100],
+			"house_cost": 300,
+			"mortgage": 220
+		},
+		{
+			"id": 23,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "red"
+		},
+		{
+			"id": 24,
+			"__name__": "Bruksela",
+			"type": "city",
+			"country": "Benelux",
+			"price": 440,
+			"rent": [36, 180, 500, 1400, 1750, 2100],
+			"house_cost": 300,
+			"mortgage": 220
+		},
+		{
+			"id": 25,
+			"__name__": "Amsterdam",
+			"type": "city",
+			"country": "Benelux",
+			"price": 480,
+			"rent": [40, 200, 600, 1500, 1850, 2200],
+			"house_cost": 300,
+			"mortgage": 240
+		},
+		{
+			"id": 26,
+			"__name__": "Koleje Północne",
+			"type": "railway",
+			"price": 400,
+			"rent": [50, 100, 200, 400],
+			"mortgage": 200
+		},
+		{
+			"id": 27,
+			"__name__": "Malmo",
+			"type": "city",
+			"country": "Szwecja",
+			"price": 520,
+			"rent": [44, 220, 660, 1600, 1950, 2300],
+			"house_cost": 300,
+			"mortgage": 260
+		},
+		{
+			"id": 28,
+			"__name__": "Goteborg",
+			"type": "city",
+			"country": "Szwecja",
+			"price": 520,
+			"rent": [44, 220, 660, 1600, 1950, 2300],
+			"house_cost": 300,
+			"mortgage": 260
+		},
+		{
+			"id": 29,
+			"__name__": "Wodociągi",
+			"type": "utility",
+			"price": 300,
+			"rent_multiplier": [8, 20],
+			"mortgage": 150
+		},
+		{
+			"id": 30,
+			"__name__": "Sztokholm",
+			"type": "city",
+			"country": "Szwecja",
+			"price": 560,
+			"rent": [48, 240, 720, 1700, 2050, 2400],
+			"house_cost": 300,
+			"mortgage": 280
+		},
+		{
+			"id": 31,
+			"__name__": "Idź do więzienia",
+			"type": "go_to_jail"
+		},
+		{
+			"id": 32,
+			"__name__": "Frankfurt",
+			"type": "city",
+			"country": "RFN",
+			"price": 600,
+			"rent": [52, 260, 780, 1800, 2200, 2550],
+			"house_cost": 400,
+			"mortgage": 300
+		},
+		{
+			"id": 33,
+			"__name__": "Kolonia",
+			"type": "city",
+			"country": "RFN",
+			"price": 600,
+			"rent": [52, 260, 780, 1800, 2200, 2550],
+			"house_cost": 400,
+			"mortgage": 300
+		},
+		{
+			"id": 34,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "blue"
+		},
+		{
+			"id": 35,
+			"__name__": "Bonn",
+			"type": "city",
+			"country": "RFN",
+			"price": 640,
+			"rent": [56, 300, 900, 2000, 2400, 2800],
+			"house_cost": 400,
+			"mortgage": 320
+		},
+		{
+			"id": 36,
+			"__name__": "Koleje Wschodnie",
+			"type": "railway",
+			"price": 400,
+			"rent": [50, 100, 200, 400],
+			"mortgage": 200
+		},
+		{
+			"id": 37,
+			"__name__": "Szansa",
+			"type": "chance",
+			"color": "red"
+		},
+		{
+			"id": 38,
+			"__name__": "Innsbruck",
+			"type": "city",
+			"country": "Austria",
+			"price": 700,
+			"rent": [70, 350, 1000, 2200, 2600, 3000],
+			"house_cost": 400,
+			"mortgage": 350
+		},
+		{
+			"id": 39,
+			"__name__": "Podatek od wzbogacenia",
+			"type": "tax",
+			"cost": 200
+		},
+		{
+			"id": 40,
+			"__name__": "Wiedeń",
+			"type": "city",
+			"country": "Austria",
+			"price": 800,
+			"rent": [100, 400, 1200, 2800, 3400, 4000],
+			"house_cost": 400,
+			"mortgage": 400
+		}
+	]
+}
