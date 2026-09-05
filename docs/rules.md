@@ -89,7 +89,7 @@ a banker auction starts at half price (`game.py:decide_purchase`).
 Honest list of Eurobiznes rules missing from this POC:
 
 - **Building** (houses/hotels), proportional-build rule, hotel upgrade.
-- **Mortgage / zastaw hipoteczny** and selling buildings back to bank.
+- **Mortgage / zastaw hipoteczny** and selling buildings back to bank. ✅ Mortgage implemented 2026-09-05 (buildings selling TBD)
 - **Rent collection is automatic** — official rule requires the owner to
   claim rent before the next player rolls.
 - ~~Passing Start while heading to jail should not pay 400 (currently does).~~ ✅ Fixed 2026-09-05

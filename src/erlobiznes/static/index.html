@@ -111,9 +111,26 @@
         <div class="modal-content">
             <h3 data-i18n="Decyzja o zakupie">Decyzja o zakupie</h3>
             <p id="buy-modal-text"></p>
+            <div id="buy-mortgage-section" style="display:none; margin-top: 10px;">
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Zastaw nieruchomość, aby uzyskać środki:</p>
+                <div id="buy-mortgage-list"></div>
+                <button id="buy-try-btn" class="btn primary" style="margin-top:8px;display:none;">Kup teraz</button>
+            </div>
             <div class="modal-actions">
                 <button id="buy-accept" class="btn primary" data-i18n="Kup">Kup</button>
                 <button id="buy-decline" class="btn secondary" data-i18n="Pomiń">Pomiń</button>
+                <button id="buy-auction-btn" class="btn secondary" style="display:none;">Licytuj</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="payment-modal" class="modal">
+        <div class="modal-content">
+            <h3>Nie stać cię na płatność</h3>
+            <p id="payment-modal-text"></p>
+            <div id="payment-mortgage-list"></div>
+            <div class="modal-actions">
+                <button id="payment-resolve-btn" class="btn primary">Zapłać</button>
             </div>
         </div>
     </div>

@@ -40,11 +40,10 @@ class TestErloGame:
 
     def test_double_grants_extra_move(self, mocker):
         game = ErloGame()
-        # (2,2) -> idx 4 (tax/Parking), extra roll (3,4) -> idx 11 (city/Barcelona)
+        # (2,2) -> idx 4 (tax/Parking, cost=400), extra roll (3,4) -> idx 11 (city/Barcelona)
         # Tax field doesn't set pending_purchase, so extra roll happens
-        # Land on city with enough money to afford it
         p = game.players[0]
-        p.money = 300  # Barcelona costs 280
+        p.money = 700  # enough for tax (400) + Barcelona (280)
         mocker.patch.object(game.dice, "roll", side_effect=[2, 2, 3, 4])
         res = game.play_turn(p)
         assert not p.in_jail
@@ -177,7 +176,12 @@ class TestPurchaseDecision:
         p = game.players[0]
         res = self._land_on_unowned(game, mocker)
 
-        assert game.pending_purchase == {"player_idx": 0, "field": 3, "price": 120}
+        assert game.pending_purchase == {
+            "player_idx": 0,
+            "field": 3,
+            "price": 120,
+            "awaiting_mortgage": False,
+        }
         assert p.money == 3000
         assert p.properties == []
         assert game.active_trade is None
@@ -530,7 +534,7 @@ class TestAuction:
         assert game.active_auction is not None
         assert any("Licytacja" in m for m in msgs)
 
-    def test_unaffordable_buy_auto_opens_auction(self, mocker):
+    def test_unaffordable_buy_sets_awaiting_mortgage(self, mocker):
         game = ErloGame()
         p = game.players[0]
         p.money = 10
@@ -540,11 +544,35 @@ class TestAuction:
 
         assert game.pending_purchase is not None
 
-        # Click "buy" but can't afford — should auto-start auction
+        # Click "buy" but can't afford — should flag for mortgage
         msgs = game.decide_purchase(True)
-        assert game.active_auction is not None
+        assert game.pending_purchase is not None
+        assert game.pending_purchase["awaiting_mortgage"] is True
+        assert game.active_auction is None
+        assert any("nie ma" in m.lower() or "nie stać" in m.lower() for m in msgs)
+
+    def test_unaffordable_buy_then_mortgage_then_buy(self, mocker):
+        game = ErloGame()
+        p = game.players[0]
+        p.money = 10
+        # Give player a mortgagable property with high mortgage value
+        p.properties.append(game.board.fields[39])  # Wieden, mortgage=400
+
+        mocker.patch.object(game.dice, "roll", side_effect=[1, 2])
+        game.play_turn(p)
+
+        # Can't afford, flag awaiting_mortgage
+        game.decide_purchase(True)
+        assert game.pending_purchase["awaiting_mortgage"] is True
+
+        # Mortgage property to get cash (Wieden mortgage=400)
+        game.handle_mortgage(0, game.board.fields[39]["id"])
+        assert p.money > 10  # got mortgage money
+
+        # Now try buying again
+        msgs = game.try_buy_after_mortgage()
         assert game.pending_purchase is None
-        assert any("nie stać" in m.lower() or "Licytacja" in m for m in msgs)
+        assert any("kupił" in m.lower() for m in msgs)
 
     def test_auction_roundtrip_persist(self):
         game = ErloGame()
@@ -639,3 +667,158 @@ class TestCoverageGaps:
         game = ErloGame()
         msgs = game.place_bid(0, 100)
         assert "Brak aktywnego handlu" in msgs[0]
+
+
+class TestMortgage:
+    def test_mortgage_adds_money_and_marks_property(self):
+        game = ErloGame()
+        p = game.players[0]
+        # Give player a city (Saloniki, board.fields[1], id=2, mortgage=60)
+        p.properties.append(game.board.fields[1])
+        prop_id = game.board.fields[1]["id"]
+        msgs = game.handle_mortgage(0, prop_id)
+        assert p.money == 3000 + 60
+        assert p.is_mortgaged(prop_id)
+        assert "zastawia" in msgs[0]
+
+    def test_unmortgage_pays_cost_and_clears(self):
+        game = ErloGame()
+        p = game.players[0]
+        p.properties.append(game.board.fields[1])
+        prop_id = game.board.fields[1]["id"]
+        p.mortgage_property(prop_id)
+        p.money = 3000
+        msgs = game.handle_unmortgage(0, prop_id)
+        assert p.money == 3000 - 66  # ceil(60 * 1.1)
+        assert not p.is_mortgaged(prop_id)
+        assert "wykupuje" in msgs[0]
+
+    def test_double_mortgage_rejected(self):
+        game = ErloGame()
+        p = game.players[0]
+        p.properties.append(game.board.fields[1])
+        prop_id = game.board.fields[1]["id"]
+        game.handle_mortgage(0, prop_id)
+        msgs = game.handle_mortgage(0, prop_id)
+        assert "już zastawiona" in msgs[0]
+
+    def test_mortgage_not_owned_rejected(self):
+        game = ErloGame()
+        msgs = game.handle_mortgage(0, 999)
+        assert "Nie posiadasz" in msgs[0]
+
+    def test_unmortgage_not_mortgaged_rejected(self):
+        game = ErloGame()
+        p = game.players[0]
+        p.properties.append(game.board.fields[1])
+        prop_id = game.board.fields[1]["id"]
+        msgs = game.handle_unmortgage(0, prop_id)
+        assert "nie jest zastawiona" in msgs[0]
+
+    def test_unmortgage_cannot_afford(self):
+        game = ErloGame()
+        p = game.players[0]
+        p.properties.append(game.board.fields[1])
+        prop_id = game.board.fields[1]["id"]
+        p.mortgage_property(prop_id)
+        p.money = 0
+        msgs = game.handle_unmortgage(0, prop_id)
+        assert "Nie stać" in msgs[0]
+        assert p.is_mortgaged(prop_id)
+
+    def test_rent_zero_when_mortgaged(self, mocker):
+        game = ErloGame()
+        p0, p1 = game.players
+        # p0 owns Saloniki (board.fields[1], id=2) and mortgages it
+        saloniki = game.board.fields[1]
+        p0.properties.append(saloniki)
+        p0.mortgage_property(saloniki["id"])
+        # p1 lands on Saloniki
+        p1.position = 1
+        results = game._resolve_field(p1, 1, 2)
+        assert p1.money == 3000  # no rent paid
+        assert any("brak czynszu" in m.lower() for m in results)
+
+    def test_trade_mortgaged_property_rejected(self):
+        game = ErloGame()
+        p0, p1 = game.players
+        saloniki = game.board.fields[1]
+        p0.properties.append(saloniki)
+        p0.mortgage_property(saloniki["id"])
+        game.propose_trade(0, 1, saloniki["__name__"], 100, "sell")
+        msgs = game.respond_trade(1, "accept")
+        assert "zastawioną" in msgs[0]
+        assert p1.money == 3000
+
+    def test_mortgage_roundtrip_persist(self):
+        game = ErloGame()
+        p = game.players[0]
+        saloniki = game.board.fields[1]
+        p.properties.append(saloniki)
+        p.mortgage_property(saloniki["id"])
+        saved = game.save()
+        game2 = ErloGame()
+        game2.restore(saved)
+        assert saloniki["id"] in game2.players[0].mortgaged
+
+
+class TestDeferredPayment:
+    def test_rent_deferred_when_cannot_afford(self, mocker):
+        game = ErloGame()
+        p0, p1 = game.players
+        saloniki = game.board.fields[1]
+        p0.properties.append(saloniki)
+        p1.money = 2  # less than rent of 4
+        p1.position = 1
+        game._resolve_field(p1, 1, 2)
+        assert game.pending_payment is not None
+        assert game.pending_payment["amount"] == 4
+        assert game.pending_payment["reason"] == "rent"
+        assert p1.money == 2  # not yet paid
+
+    def test_tax_deferred_when_cannot_afford(self, mocker):
+        game = ErloGame()
+        p = game.players[0]
+        p.money = 50
+        p.position = 4  # Parking Strzeżony, cost=400
+        game._resolve_field(p, 4, 2)
+        assert game.pending_payment is not None
+        assert game.pending_payment["amount"] == 400
+        assert game.pending_payment["reason"] == "tax"
+        assert p.money == 50  # not yet paid
+
+    def test_resolve_payment_after_mortgage(self, mocker):
+        game = ErloGame()
+        p0, p1 = game.players
+        saloniki = game.board.fields[1]
+        p0.properties.append(saloniki)
+        p1.money = 2
+        p1.position = 1
+        game._resolve_field(p1, 1, 2)
+        assert game.pending_payment is not None
+
+        # Mortgage property to get cash (Wieden mortgage=400)
+        game.current_player_idx = 1
+        p1.properties.append(game.board.fields[39])
+        game.handle_mortgage(1, game.board.fields[39]["id"])
+
+        # Resolve payment
+        game.resolve_pending_payment()
+        assert game.pending_payment is None
+        assert p1.money == 2 + 400 - 4  # mortgage money minus rent
+
+    def test_start_auction_from_pending(self, mocker):
+        game = ErloGame()
+        p = game.players[0]
+        p.money = 10
+        p.position = 3  # Ateny, price=120
+        game.pending_purchase = {
+            "player_idx": 0,
+            "field": 3,
+            "price": 120,
+            "awaiting_mortgage": True,
+        }
+        msgs = game.start_auction_from_pending()
+        assert game.pending_purchase is None
+        assert game.active_auction is not None
+        assert any("Licytacja" in m for m in msgs)
