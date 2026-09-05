@@ -15,7 +15,7 @@ MESSAGES = {
     "unowned_price": "Nieruchomość na sprzedaż. Cena: {price}",
     "bought_property": "{name} kupił {field_name}",
     "cannot_afford": "{name} nie ma wystarczająco pieniędzy na {field_name}",
-    "declined_purchase": "{name} nie kupił {field_name}",
+    "declined_purchase": "{name} nie kupił {field_name}. Licytacja się rozpoczyna.",
     "no_pending_purchase": "Brak decyzji o zakupie.",
     "purchase_required": "{name} musi najpierw zdecydować o zakupie.",
     "tax_paid": "Podatek: {field_name}, Koszt: {cost}",
@@ -31,4 +31,14 @@ MESSAGES = {
     "invalid_price": "Nieprawidłowa cena.",
     "unknown_response": "Nieznana odpowiedź.",
     "trade_success": "Transakcja zakończona! {buyer_name} kupił {property_name} od {seller_name} za {price}$.",
+    # Auction Messages
+    "auction_opened": "Licytacja: {field_name}, cena wywoławcza: {price}$",
+    "auction_bid": "{name} licytuje {amount}$ za {field_name}",
+    "auction_pass": "{name} rezygnuje z licytacji",
+    "auction_won": "{name} wygrywa licytację {field_name} za {amount}$",
+    "auction_no_bids": "Nikt nie licytował {field_name}. Pole pozostaje własnością banku.",
+    "auction_in_progress": "Trwa licytacja. Poczekaj na jej zakończenie.",
+    "not_your_auction_turn": "Nie twoja kolej licytacji.",
+    "bid_too_low": "Oferta musi być wyższa niż obecna.",
+    "cannot_afford_bid": "Nie stać cię na tę ofertę.",
 }

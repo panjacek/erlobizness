@@ -7,7 +7,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@playwright/test": "^1.62.1",
+		"@playwright/test": "^1.63.0",
 		"jsdom": "^26.0.0",
 		"vitest": "^3.2.6"
 	}

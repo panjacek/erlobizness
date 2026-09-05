@@ -41,6 +41,15 @@ const gameOverModal = document.getElementById("game-over-modal");
 const gameOverText = document.getElementById("game-over-text");
 const gameOverResetBtn = document.getElementById("game-over-reset");
 
+// Auction elements
+const auctionModal = document.getElementById("auction-modal");
+const auctionText = document.getElementById("auction-text");
+const auctionCurrentBid = document.getElementById("auction-current-bid");
+const auctionBidSection = document.getElementById("auction-bid-section");
+const auctionBidInput = document.getElementById("auction-bid-input");
+const auctionBidBtn = document.getElementById("auction-bid-btn");
+const auctionPassBtn = document.getElementById("auction-pass-btn");
+
 function renderDiceVisual(rolls) {
 	diceVisual.innerHTML = "";
 
@@ -109,12 +118,13 @@ async function rollDice() {
 	} catch (e) {
 		addLog(i18n.network_error || "Connection error.");
 	} finally {
-		// Keep the button dead when the game ended, a trade blocks turns
-		// or a buy decision is pending
+		// Keep the button dead when the game ended, a trade blocks turns,
+		// a buy decision is pending, or an auction is in progress
 		rollBtn.disabled =
 			!!gameState?.game_over ||
 			!!gameState?.active_trade ||
-			!!gameState?.pending_purchase;
+			!!gameState?.pending_purchase ||
+			!!gameState?.active_auction;
 	}
 }
 
@@ -167,25 +177,25 @@ function render() {
 			const propertiesHtml =
 				p.properties.length > 0
 					? p.properties
-						.map((prop) => {
-							const colorClass = prop.country
-								? `prop-${prop.country.toLowerCase().replace("ą", "a")}`
-								: `prop-${prop.type}`;
-							return `<span class="property-chip ${colorClass}">${prop.name}</span>`;
-						})
-						.join("")
+							.map((prop) => {
+								const colorClass = prop.country
+									? `prop-${prop.country.toLowerCase().replace("ą", "a")}`
+									: `prop-${prop.type}`;
+								return `<span class="property-chip ${colorClass}">${prop.name}</span>`;
+							})
+							.join("")
 					: `<span style="color: var(--text-muted)">${i18n.brak || "none"}</span>`;
 
 			return `
         <div class="player-card ${isActive ? "active" : ""}">
             <div class="player-name">
                 <span class="player-color-indicator player-${idx}-bg"></span>
-                ${p.name} ${p.in_jail ? (i18n.in_jail || "(In jail)") : ""}
+                ${p.name} ${p.in_jail ? i18n.in_jail || "(In jail)" : ""}
                 ${isActive ? '<span class="active-dice-icon">🎲</span>' : ""}
             </div>
             <div class="player-money">${p.money} $</div>
             <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem">
-                ${(i18n.titles?.["Akty Własności:"]) || "Properties:"}<br>
+                ${i18n.titles?.["Akty Własności:"] || "Properties:"}<br>
                 <div style="margin-top: 4px;">${propertiesHtml}</div>
             </div>
         </div>
@@ -199,51 +209,60 @@ function render() {
 		validateBoard();
 	}
 	updateMarkers();
-    checkTradeState();
+	checkTradeState();
 	checkPurchaseState();
+	checkAuctionState();
 	checkGameOverState();
 }
 
 function checkTradeState() {
-    if (!gameState) return;
-    
-    if (gameState.active_trade) {
-        tradeBtn.style.display = "none";
-        rollBtn.disabled = true; // Disable rolling while trade active
-        
-        const trade = gameState.active_trade;
-        const proposerName = gameState.players[trade.proposer_idx].name;
-        const targetName = gameState.players[trade.target_idx].name;
-        
-        let tradeText = "";
-        if (trade.action === "buy") {
-            tradeText = i18n.trade?.wants_to_buy
-                ? i18n.trade.wants_to_buy.replace("{proposer}", proposerName).replace("{property}", trade.property_name).replace("{price}", trade.price).replace("{target}", targetName)
-                : `${proposerName} wants to buy ${trade.property_name} for ${trade.price}$. Deal, ${targetName}?`;
-        } else {
-            tradeText = i18n.trade?.wants_to_sell
-            ? i18n.trade.wants_to_sell.replace("{proposer}", proposerName).replace("{property}", trade.property_name).replace("{price}", trade.price).replace("{target}", targetName)
-            : `${proposerName} wants to sell ${trade.property_name} for ${trade.price}$. Deal, ${targetName}?`;
-        }
-        
-        tradeRespondText.textContent = tradeText;
-        
-        tradeCounterSection.style.display = "none";
-        tradeBtnAccept.style.display = "block";
-        tradeBtnReject.style.display = "block";
-        tradeBtnCounter.style.display = "block";
-        tradeBtnSendCounter.style.display = "none";
-        tradeCounterPrice.value = trade.price;
-        
-        tradeRespondModal.style.display = "block";
-    } else {
-        tradeRespondModal.style.display = "none";
-        tradeInitModal.style.display = "none";
-        tradeBtn.style.display = "block";
-        if (!gameState.game_over) {
-            rollBtn.disabled = false;
-        }
-    }
+	if (!gameState) return;
+
+	if (gameState.active_trade) {
+		tradeBtn.style.display = "none";
+		rollBtn.disabled = true; // Disable rolling while trade active
+
+		const trade = gameState.active_trade;
+		const proposerName = gameState.players[trade.proposer_idx].name;
+		const targetName = gameState.players[trade.target_idx].name;
+
+		let tradeText = "";
+		if (trade.action === "buy") {
+			tradeText = i18n.trade?.wants_to_buy
+				? i18n.trade.wants_to_buy
+						.replace("{proposer}", proposerName)
+						.replace("{property}", trade.property_name)
+						.replace("{price}", trade.price)
+						.replace("{target}", targetName)
+				: `${proposerName} wants to buy ${trade.property_name} for ${trade.price}$. Deal, ${targetName}?`;
+		} else {
+			tradeText = i18n.trade?.wants_to_sell
+				? i18n.trade.wants_to_sell
+						.replace("{proposer}", proposerName)
+						.replace("{property}", trade.property_name)
+						.replace("{price}", trade.price)
+						.replace("{target}", targetName)
+				: `${proposerName} wants to sell ${trade.property_name} for ${trade.price}$. Deal, ${targetName}?`;
+		}
+
+		tradeRespondText.textContent = tradeText;
+
+		tradeCounterSection.style.display = "none";
+		tradeBtnAccept.style.display = "block";
+		tradeBtnReject.style.display = "block";
+		tradeBtnCounter.style.display = "block";
+		tradeBtnSendCounter.style.display = "none";
+		tradeCounterPrice.value = trade.price;
+
+		tradeRespondModal.style.display = "block";
+	} else {
+		tradeRespondModal.style.display = "none";
+		tradeInitModal.style.display = "none";
+		tradeBtn.style.display = "block";
+		if (!gameState.game_over) {
+			rollBtn.disabled = false;
+		}
+	}
 }
 
 function checkPurchaseState() {
@@ -256,6 +275,32 @@ function checkPurchaseState() {
 		rollBtn.disabled = true; // Decision blocks rolling
 	} else {
 		buyModal.style.display = "none";
+	}
+}
+
+function checkAuctionState() {
+	if (!gameState) return;
+
+	if (gameState.active_auction && !gameState.game_over) {
+		const auction = gameState.active_auction;
+		const field = gameState.board[auction.field];
+		const isMyTurn = auction.auction_turn === gameState.current_player_idx;
+
+		auctionText.textContent = `${field.name}`;
+		auctionCurrentBid.textContent = auction.current_bid;
+		const minBid =
+			auction.current_bidder === null ? auction.starting_price : auction.current_bid + 1;
+		auctionBidInput.value = minBid;
+		auctionBidInput.min = minBid;
+
+		auctionBidSection.style.display = isMyTurn ? "block" : "none";
+		auctionBidBtn.style.display = isMyTurn ? "block" : "none";
+		auctionPassBtn.style.display = isMyTurn ? "block" : "none";
+
+		auctionModal.style.display = isMyTurn ? "block" : "none";
+		rollBtn.disabled = true;
+	} else {
+		auctionModal.style.display = "none";
 	}
 }
 
@@ -365,151 +410,193 @@ resetBtn.addEventListener("click", resetGame);
 gameOverResetBtn.addEventListener("click", resetGame);
 
 tradeBtn.addEventListener("click", () => {
-    tradeTargetSelect.innerHTML = "";
-    gameState.players.forEach((p, idx) => {
-        if (idx !== gameState.current_player_idx) {
-            tradeTargetSelect.innerHTML += `<option value="${idx}">${p.name}</option>`;
-        }
-    });
+	tradeTargetSelect.innerHTML = "";
+	gameState.players.forEach((p, idx) => {
+		if (idx !== gameState.current_player_idx) {
+			tradeTargetSelect.innerHTML += `<option value="${idx}">${p.name}</option>`;
+		}
+	});
 
-    updateTradeProperties();
-    tradeInitModal.style.display = "block";
+	updateTradeProperties();
+	tradeInitModal.style.display = "block";
 });
 
 tradeInitCancelBtn.addEventListener("click", () => {
-    tradeInitModal.style.display = "none";
+	tradeInitModal.style.display = "none";
 });
 
 function updateTradeProperties() {
-    const action = tradeActionSelect.value;
-    const targetIdx = Number.parseInt(tradeTargetSelect.value);
-    if (Number.isNaN(targetIdx)) return;
-    const myIdx = gameState.current_player_idx;
-    const ownerIdx = action === "buy" ? targetIdx : myIdx;
-    const owner = gameState.players[ownerIdx];
+	const action = tradeActionSelect.value;
+	const targetIdx = Number.parseInt(tradeTargetSelect.value);
+	if (Number.isNaN(targetIdx)) return;
+	const myIdx = gameState.current_player_idx;
+	const ownerIdx = action === "buy" ? targetIdx : myIdx;
+	const owner = gameState.players[ownerIdx];
 
-    tradePropertySelect.innerHTML = "";
-    for (const prop of owner.properties) {
-        const propName = prop.name || prop.__name__;
-        tradePropertySelect.innerHTML += `<option value="${propName}">${propName}</option>`;
-    }
+	tradePropertySelect.innerHTML = "";
+	for (const prop of owner.properties) {
+		const propName = prop.name || prop.__name__;
+		tradePropertySelect.innerHTML += `<option value="${propName}">${propName}</option>`;
+	}
 }
 
 tradeTargetSelect.addEventListener("change", updateTradeProperties);
 tradeActionSelect.addEventListener("change", updateTradeProperties);
 
 tradeInitSendBtn.addEventListener("click", async () => {
-    const targetIdx = Number.parseInt(tradeTargetSelect.value);
-    const action = tradeActionSelect.value;
-    const propName = tradePropertySelect.value;
-    const price = Number.parseInt(tradePriceInput.value);
+	const targetIdx = Number.parseInt(tradeTargetSelect.value);
+	const action = tradeActionSelect.value;
+	const propName = tradePropertySelect.value;
+	const price = Number.parseInt(tradePriceInput.value);
 
-    if (!propName || Number.isNaN(price) || price <= 0) {
-        alert(i18n.trade?.invalid_data || "Invalid trade data!");
-        return;
-    }
+	if (!propName || Number.isNaN(price) || price <= 0) {
+		alert(i18n.trade?.invalid_data || "Invalid trade data!");
+		return;
+	}
 
-    tradeInitModal.style.display = "none";
+	tradeInitModal.style.display = "none";
 
-    const res = await fetch("/trade/offer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            proposer_idx: gameState.current_player_idx,
-            target_idx: targetIdx,
-            property_name: propName,
-            price: price,
-            action: action
-        })
-    });
-    const data = await res.json();
-    if (!res.ok) {
-        addLog(data.detail || "Trade error");
-        return;
-    }
-    handleBackendResponse(data);
+	const res = await fetch("/trade/offer", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			proposer_idx: gameState.current_player_idx,
+			target_idx: targetIdx,
+			property_name: propName,
+			price: price,
+			action: action,
+		}),
+	});
+	const data = await res.json();
+	if (!res.ok) {
+		addLog(data.detail || "Trade error");
+		return;
+	}
+	handleBackendResponse(data);
 });
 
 async function sendTradeResponse(action, newPrice = null) {
-    if (!gameState || !gameState.active_trade) return;
-    tradeRespondModal.style.display = "none";
-    const res = await fetch("/trade/respond", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            responder_idx: gameState.active_trade.target_idx,
-            response: action,
-            new_price: newPrice
-        })
-    });
-    const data = await res.json();
-    handleBackendResponse(data);
-    // Explicitly re-check after handling
-    checkTradeState();
+	if (!gameState || !gameState.active_trade) return;
+	tradeRespondModal.style.display = "none";
+	const res = await fetch("/trade/respond", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			responder_idx: gameState.active_trade.target_idx,
+			response: action,
+			new_price: newPrice,
+		}),
+	});
+	const data = await res.json();
+	handleBackendResponse(data);
+	// Explicitly re-check after handling
+	checkTradeState();
 }
 
 tradeBtnAccept.addEventListener("click", () => sendTradeResponse("accept"));
 tradeBtnReject.addEventListener("click", () => sendTradeResponse("reject"));
 
 tradeBtnCounter.addEventListener("click", () => {
-    tradeCounterSection.style.display = "block";
-    tradeBtnAccept.style.display = "none";
-    tradeBtnReject.style.display = "none";
-    tradeBtnCounter.style.display = "none";
-    tradeBtnSendCounter.style.display = "block";
+	tradeCounterSection.style.display = "block";
+	tradeBtnAccept.style.display = "none";
+	tradeBtnReject.style.display = "none";
+	tradeBtnCounter.style.display = "none";
+	tradeBtnSendCounter.style.display = "block";
 });
 
 tradeBtnSendCounter.addEventListener("click", () => {
-    const newPrice = Number.parseInt(tradeCounterPrice.value);
-    if (Number.isNaN(newPrice) || newPrice <= 0) return;
-    sendTradeResponse("counter", newPrice);
+	const newPrice = Number.parseInt(tradeCounterPrice.value);
+	if (Number.isNaN(newPrice) || newPrice <= 0) return;
+	sendTradeResponse("counter", newPrice);
 });
 
 async function sendPurchaseDecision(decision) {
-    buyModal.style.display = "none";
-    const res = await fetch("/purchase/decide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-    });
-    const data = await res.json();
-    handleBackendResponse(data);
+	buyModal.style.display = "none";
+	const res = await fetch("/purchase/decide", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ decision }),
+	});
+	const data = await res.json();
+	handleBackendResponse(data);
 }
 
 buyAcceptBtn.addEventListener("click", () => sendPurchaseDecision("buy"));
 buyDeclineBtn.addEventListener("click", () => sendPurchaseDecision("decline"));
 
+async function sendAuctionBid() {
+	if (!gameState || !gameState.active_auction) return;
+	const amount = Number.parseInt(auctionBidInput.value);
+	if (Number.isNaN(amount) || amount <= gameState.active_auction.current_bid) return;
+
+	const res = await fetch("/auction/bid", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			player_idx: gameState.active_auction.auction_turn,
+			amount: amount,
+		}),
+	});
+	const data = await res.json();
+	if (!res.ok) {
+		addLog(data.detail || "Błąd licytacji");
+		return;
+	}
+	handleBackendResponse(data);
+}
+
+async function sendAuctionPass() {
+	if (!gameState || !gameState.active_auction) return;
+
+	const res = await fetch("/auction/pass", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({
+			player_idx: gameState.active_auction.auction_turn,
+		}),
+	});
+	const data = await res.json();
+	if (!res.ok) {
+		addLog(data.detail || "Błąd licytacji");
+		return;
+	}
+	handleBackendResponse(data);
+}
+
+auctionBidBtn.addEventListener("click", sendAuctionBid);
+auctionPassBtn.addEventListener("click", sendAuctionPass);
+
 function handleBackendResponse(data) {
-    if (data.messages) {
-        for (const msg of data.messages) {
-            addLog(msg);
-        }
-    }
+	if (data.messages) {
+		for (const msg of data.messages) {
+			addLog(msg);
+		}
+	}
 
-    // state.current_player_idx from server is authoritative
-    if (data.state) {
-        gameState = data.state;
-    }
+	// state.current_player_idx from server is authoritative
+	if (data.state) {
+		gameState = data.state;
+	}
 
-    render();
+	render();
 }
 
 async function loadLanguage() {
-    try {
-        const res = await fetch("/static/lang/pl.json");
-        i18n = await res.json();
-        translateDOM();
-    } catch (e) {
-        console.warn("Failed to load language file", e);
-    }
+	try {
+		const res = await fetch("/static/lang/pl.json");
+		i18n = await res.json();
+		translateDOM();
+	} catch (e) {
+		console.warn("Failed to load language file", e);
+	}
 }
 
 function translateDOM() {
-    if (!i18n.titles) return;
+	if (!i18n.titles) return;
 
-    for (const el of document.querySelectorAll("[data-i18n]")) {
-        el.textContent = i18n.titles[el.dataset.i18n] || el.textContent;
-    }
+	for (const el of document.querySelectorAll("[data-i18n]")) {
+		el.textContent = i18n.titles[el.dataset.i18n] || el.textContent;
+	}
 }
 
 // Theme switching

@@ -118,6 +118,22 @@
         </div>
     </div>
 
+    <div id="auction-modal" class="modal">
+        <div class="modal-content">
+            <h3 data-i18n="Licytacja">Licytacja</h3>
+            <p id="auction-text"></p>
+            <p><span data-i18n="Obecna oferta:">Obecna oferta:</span> <span id="auction-current-bid">0</span>$</p>
+            <div id="auction-bid-section">
+                <label data-i18n="Twoja oferta ($):">Twoja oferta ($):</label>
+                <input type="number" id="auction-bid-input" min="1" step="1">
+            </div>
+            <div class="modal-actions">
+                <button id="auction-bid-btn" class="btn primary" data-i18n="Licytuj">Licytuj</button>
+                <button id="auction-pass-btn" class="btn secondary" data-i18n="Pass">Pass</button>
+            </div>
+        </div>
+    </div>
+
     <div id="game-over-modal" class="modal">
         <div class="modal-content">
             <h3 data-i18n="Koniec Gry">Koniec Gry</h3>

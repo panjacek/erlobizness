@@ -9,10 +9,7 @@ export default defineConfig({
 	testDir: "./e2e",
 	timeout: 15_000,
 	expect: { timeout: 5_000 },
-	reporter: [
-		["list"],
-		["junit", { outputFile: "test-results/junit.xml" }],
-	],
+	reporter: [["list"], ["junit", { outputFile: "test-results/junit.xml" }]],
 	use: {
 		baseURL: "http://localhost:8000",
 		headless: true,

@@ -20,7 +20,7 @@ Single global `ErloGame` + `current_player_idx` module globals in
 
 See [`eurobiznes_rules.md`](eurobiznes_rules.md) for the source rules.
 
-- [ ] **Auction** when player declines to buy (banker auctions at half price)
+- [x] **Auction** when player declines to buy (banker auctions at half price)
 - [ ] **Building**: houses (max 4/city), hotels, proportional-build rule,
       max 3 houses per round; needs UI + ownership model extension
 - [ ] **Mortgage** (zastaw): borrow from bank, redeem +10% interest;
