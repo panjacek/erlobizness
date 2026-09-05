@@ -92,5 +92,5 @@ Honest list of Eurobiznes rules missing from this POC:
 - **Mortgage / zastaw hipoteczny** and selling buildings back to bank.
 - **Rent collection is automatic** — official rule requires the owner to
   claim rent before the next player rolls.
-- Passing Start while heading to jail should not pay 400 (currently does).
+- ~~Passing Start while heading to jail should not pay 400 (currently does).~~ ✅ Fixed 2026-09-05
 - Win condition: game ends on bankruptcy only; no timed-end money count.

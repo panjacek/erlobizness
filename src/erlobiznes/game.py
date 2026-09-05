@@ -90,14 +90,14 @@ class ErloGame:
                 )
             )
 
-            if cross > 0:
-                reward = cross * 400  # Assuming 400 for passing Start
+            results.extend(self._resolve_field(p, new_pos, steps))
+
+            if cross > 0 and not p.in_jail:
+                reward = cross * 400
                 results.append(
                     MESSAGES["passed_start"].format(name=p.name, reward=reward)
                 )
                 p.receive(reward)
-
-            results.extend(self._resolve_field(p, new_pos, steps))
 
             # Jail (field or card) always ends the turn
             if p.in_jail:
