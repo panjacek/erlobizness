@@ -48,6 +48,22 @@ rules reference (Polish, original source): [`eurobiznes_rules.md`](eurobiznes_ru
 - Invalid prices are rejected server-side; the original offer survives a
   failed counter.
 
+## Auction
+
+When a player declines to buy an unowned field (or cannot afford it),
+a banker auction starts at half price (`game.py:decide_purchase`).
+
+- **Starting price**: `price // 2` (integer division).
+- **Turn order**: auction starts with the other player; all players
+  (including decliner) may bid.
+- **Bidding**: each bid must exceed the current bid; funds checked at bid
+  time. Pass count resets on each bid.
+- **Passing**: consecutive passes; when `pass_count >= len(players) - 1`:
+  - If bids exist: highest bidder pays bank, gets property.
+  - If no bids: field stays unowned.
+- **Turn blocks**: auction open → `/roll` refused (same as `pending_purchase`).
+- **2-player simplification**: one pass ends the auction immediately.
+
 ## Money
 
 - `Player.pay` deducts unconditionally and may go negative; bankruptcy =
@@ -72,8 +88,6 @@ rules reference (Polish, original source): [`eurobiznes_rules.md`](eurobiznes_ru
 
 Honest list of Eurobiznes rules missing from this POC:
 
-- **Auction** of unowned fields when the player declines to buy — declining
-  simply leaves the field unowned (no auction phase).
 - **Building** (houses/hotels), proportional-build rule, hotel upgrade.
 - **Mortgage / zastaw hipoteczny** and selling buildings back to bank.
 - **Rent collection is automatic** — official rule requires the owner to

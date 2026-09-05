@@ -1,5 +1,5 @@
 DOCKER_RUN_ARGS := --rm --user $(shell id -u):$(shell id -g) -v $(CURDIR):/app -w /app node:24-slim
-DOCKER_PW_ARGS := --rm --network host --user $(shell id -u):$(shell id -g) -e HOME=/tmp -e E2E_IN_DOCKER=1 -v $(CURDIR):/app -w /app mcr.microsoft.com/playwright:v1.62.1-noble
+DOCKER_PW_ARGS := --rm --network host --user $(shell id -u):$(shell id -g) -e HOME=/tmp -e E2E_IN_DOCKER=1 -v $(CURDIR):/app -w /app mcr.microsoft.com/playwright:v1.63.0-noble
 
 .PHONY: help up test test-py coverage test-js test-e2e lint lint-py lint-js format format-py format-js
 
@@ -27,8 +27,9 @@ test-e2e: ## Run browser E2E via Playwright Docker image (requires `make up` run
 lint: lint-py lint-js ## Run all linters (ruff + biome)
 	@echo "Linting done"
 
-lint-py: ## Ruff check
+lint-py: ## Ruff check + format check
 	uv run ruff check .
+	uv run ruff format --check .
 
 lint-js: ## Biome lint via Docker
 	docker run $(DOCKER_RUN_ARGS) sh -c "npx @biomejs/biome lint ."

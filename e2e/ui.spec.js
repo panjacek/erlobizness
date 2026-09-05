@@ -17,6 +17,13 @@ async function rollUntilCurrentPlayerOwnsProperty(page) {
 				data: { decision: "buy" },
 			});
 		}
+		// Buy may have started auction (can't afford) — pass to end it
+		const stateAfterBuy = await (await page.request.get("/state")).json();
+		if (stateAfterBuy.active_auction) {
+			await page.request.post("/auction/pass", {
+				data: { player_idx: stateAfterBuy.active_auction.auction_turn },
+			});
+		}
 		const state = await (await page.request.get("/state")).json();
 		if (state.players[state.current_player_idx].properties.length > 0) {
 			return state;
@@ -33,15 +40,11 @@ test.describe("ErloBiznes UI", () => {
 		await expect(page.locator("#roll-btn")).toBeVisible();
 	});
 
-	test("roll shows dice, total and log entry, re-enables button", async ({
-		page,
-	}) => {
+	test("roll shows dice, total and log entry, re-enables button", async ({ page }) => {
 		await page.goto("/");
 		await expect(page.locator(".field")).toHaveCount(40);
 
-		const posBefore = (
-			await (await page.request.get("/state")).json()
-		).players[0].position;
+		const posBefore = (await (await page.request.get("/state")).json()).players[0].position;
 
 		await page.click("#roll-btn");
 
@@ -59,21 +62,26 @@ test.describe("ErloBiznes UI", () => {
 		await expect(async () => {
 			if (await page.locator("#buy-modal").isVisible()) {
 				await page.click("#buy-decline");
+				await expect(page.locator("#buy-modal")).not.toBeVisible();
+			}
+			// Declining starts auction — pass via API (modal may be hidden)
+			const state = await (await page.request.get("/state")).json();
+			if (state.active_auction) {
+				await page.request.post("/auction/pass", {
+					data: { player_idx: state.active_auction.auction_turn },
+				});
+				await page.evaluate(() => fetchState());
 			}
 			await expect(page.locator("#roll-btn")).toBeEnabled({ timeout: 1_000 });
-		}).toPass({ timeout: 8_000 });
+		}).toPass({ timeout: 10_000 });
 
 		// The active pawn actually ended up where the server says
 		const state = await (await page.request.get("/state")).json();
-		const moverIdx =
-			(state.current_player_idx + state.players.length - 1) %
-			state.players.length;
+		const moverIdx = (state.current_player_idx + state.players.length - 1) % state.players.length;
 		if (moverIdx === 0 && !state.players[0].in_jail) {
 			expect(state.players[0].position).not.toBe(posBefore);
 			// Both pawns may share a field - assert visibility, not count
-			const marker = page
-				.locator(`#field-${state.players[0].position} .player-marker`)
-				.first();
+			const marker = page.locator(`#field-${state.players[0].position} .player-marker`).first();
 			await expect(marker).toBeVisible();
 		}
 	});
@@ -97,21 +105,14 @@ test.describe("ErloBiznes UI", () => {
 
 		// Current player sells their own property to the other player
 		await page.selectOption("#trade-action-select", "sell");
-		const propOption = page
-			.locator("#trade-property-select option", { hasText: propName })
-			.first();
+		const propOption = page.locator("#trade-property-select option", { hasText: propName }).first();
 		await expect(propOption).toHaveCount(1);
-		await page.selectOption(
-			"#trade-property-select",
-			await propOption.getAttribute("value"),
-		);
+		await page.selectOption("#trade-property-select", await propOption.getAttribute("value"));
 		await page.fill("#trade-price-input", "50");
 
 		await page.click("#trade-init-send");
 		await expect(page.locator("#trade-respond-modal")).toBeVisible();
-		await expect(page.locator("#trade-respond-text")).toContainText(
-			`${propName} za 50`,
-		);
+		await expect(page.locator("#trade-respond-text")).toContainText(`${propName} za 50`);
 
 		// Counter with a different price: section swaps in, buttons swap out
 		await page.click("#trade-btn-counter");
@@ -122,9 +123,7 @@ test.describe("ErloBiznes UI", () => {
 
 		// Modal re-renders with the countered price as the active offer
 		await expect(page.locator("#trade-btn-accept")).toBeVisible();
-		await expect(page.locator("#trade-respond-text")).toContainText(
-			`${propName} za 500`,
-		);
+		await expect(page.locator("#trade-respond-text")).toContainText(`${propName} za 500`);
 
 		const stateBefore = await (await page.request.get("/state")).json();
 		await page.click("#trade-btn-accept");
@@ -135,17 +134,11 @@ test.describe("ErloBiznes UI", () => {
 		expect(stateAfter.active_trade).toBeNull();
 		const buyerIdx = stateAfter.current_player_idx === 0 ? 1 : 0;
 		const sellerIdx = state.current_player_idx;
-		const prop = stateAfter.players[buyerIdx].properties.find(
-			(p) => p.name === propName,
-		);
+		const prop = stateAfter.players[buyerIdx].properties.find((p) => p.name === propName);
 		expect(prop).toBeDefined();
-		const moneyDelta =
-			stateAfter.players[sellerIdx].money -
-			stateBefore.players[sellerIdx].money;
+		const moneyDelta = stateAfter.players[sellerIdx].money - stateBefore.players[sellerIdx].money;
 		expect(moneyDelta).toBe(500);
-		await expect(page.locator("#game-log")).toContainText(
-			"Transakcja zakończona",
-		);
+		await expect(page.locator("#game-log")).toContainText("Transakcja zakończona");
 	});
 
 	test("trade reject closes loop without transaction", async ({ page }) => {
@@ -156,13 +149,8 @@ test.describe("ErloBiznes UI", () => {
 
 		await page.click("#trade-btn");
 		await page.selectOption("#trade-action-select", "sell");
-		const propOption = page
-			.locator("#trade-property-select option", { hasText: propName })
-			.first();
-		await page.selectOption(
-			"#trade-property-select",
-			await propOption.getAttribute("value"),
-		);
+		const propOption = page.locator("#trade-property-select option", { hasText: propName }).first();
+		await page.selectOption("#trade-property-select", await propOption.getAttribute("value"));
 		await page.fill("#trade-price-input", "50");
 		await page.click("#trade-init-send");
 		await expect(page.locator("#trade-respond-modal")).toBeVisible();
@@ -177,9 +165,7 @@ test.describe("ErloBiznes UI", () => {
 			(p) => p.name === propName,
 		);
 		expect(stillOwned).toBeDefined();
-		await expect(page.locator("#game-log")).not.toContainText(
-			"Transakcja zakończona",
-		);
+		await expect(page.locator("#game-log")).not.toContainText("Transakcja zakończona");
 	});
 
 	test("reset clears log and hides dice", async ({ page }) => {
@@ -193,6 +179,14 @@ test.describe("ErloBiznes UI", () => {
 		if (await page.locator("#buy-modal").isVisible()) {
 			await page.click("#buy-decline");
 			await expect(page.locator("#buy-modal")).not.toBeVisible();
+		}
+		// Declining may have started an auction — pass via API
+		const stateAfterRoll = await (await page.request.get("/state")).json();
+		if (stateAfterRoll.active_auction) {
+			await page.request.post("/auction/pass", {
+				data: { player_idx: stateAfterRoll.active_auction.auction_turn },
+			});
+			await page.evaluate(() => fetchState());
 		}
 
 		await page.click("#reset-btn");
@@ -208,12 +202,16 @@ test.describe("ErloBiznes UI", () => {
 				pending = resp.state.pending_purchase;
 				break;
 			}
+			// API may have started auction (can't afford) — pass to end turn
+			if (resp.state.active_auction) {
+				await page.request.post("/auction/pass", {
+					data: { player_idx: resp.state.active_auction.auction_turn },
+				});
+			}
 		}
-		test.skip(!pending, "Never landed on an affordable unowned field");
+		test.skip(!pending, "Never landed on an unowned field");
 
-		const fieldName = (
-			await (await page.request.get("/state")).json()
-		).board[pending.field].name;
+		const fieldName = (await (await page.request.get("/state")).json()).board[pending.field].name;
 
 		await page.goto("/");
 		await expect(page.locator("#buy-modal")).toBeVisible();
@@ -222,13 +220,22 @@ test.describe("ErloBiznes UI", () => {
 
 		await page.click("#buy-decline");
 		await expect(page.locator("#buy-modal")).not.toBeVisible();
+
+		// Declining starts auction — pass via API (modal hidden for non-active player)
+		const afterDecline = await (await page.request.get("/state")).json();
+		if (afterDecline.active_auction) {
+			await page.request.post("/auction/pass", {
+				data: { player_idx: afterDecline.active_auction.auction_turn },
+			});
+		}
+
+		// Force frontend to re-fetch stale state after API pass
+		await page.evaluate(() => fetchState());
 		await expect(page.locator("#roll-btn")).toBeEnabled({ timeout: 15_000 });
 
 		const state = await (await page.request.get("/state")).json();
 		expect(state.pending_purchase).toBeNull();
-		const ownedNames = state.players.flatMap((p) =>
-			p.properties.map((pr) => pr.name),
-		);
+		const ownedNames = state.players.flatMap((p) => p.properties.map((pr) => pr.name));
 		expect(ownedNames).not.toContain(fieldName);
 	});
 

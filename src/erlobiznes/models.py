@@ -15,3 +15,12 @@ class TradeResponse(BaseModel):
     responder_idx: int
     response: Literal["accept", "reject", "counter"]
     new_price: int | None = None
+
+
+class AuctionBid(BaseModel):
+    player_idx: int
+    amount: int
+
+
+class AuctionPass(BaseModel):
+    player_idx: int

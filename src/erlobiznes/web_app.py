@@ -8,30 +8,15 @@ from pydantic import BaseModel
 
 from .game import ErloGame
 from .lang_pl import MESSAGES
-from .models import TradeOffer, TradeResponse
+from .models import TradeOffer, TradeResponse, AuctionBid, AuctionPass
 import json
 import os
 import tempfile
 
 
-app = FastAPI()
-
 SAVE_PATH = os.environ.get("ERLO_SAVE_PATH") or os.path.join(
     tempfile.gettempdir(), "erlobiznes_save.json"
 )
-
-# Global game instance for simplicity as requested
-game = ErloGame()
-current_player_idx = 0
-
-# Restore the previous session on startup; a corrupt or unreadable save
-# falls back to a fresh game instead of crashing startup.
-try:
-    if os.path.exists(SAVE_PATH):
-        with open(SAVE_PATH) as f:
-            game.restore(json.load(f))
-except Exception:
-    game = ErloGame()  # corrupt save -> fresh game
 
 
 class PurchaseDecision(BaseModel):
@@ -42,162 +27,188 @@ class DebugState(BaseModel):
     state: dict
 
 
-def persist():
-    # Persistence is best-effort: a failed disk write must never break a
-    # game request, so errors are swallowed and the game continues.
+def create_app() -> FastAPI:
+    application = FastAPI()
+
+    application.state.game = ErloGame()
     try:
-        with open(SAVE_PATH, "w") as f:
-            json.dump(game.save(), f)
+        if os.path.exists(SAVE_PATH):
+            with open(SAVE_PATH) as f:
+                application.state.game.restore(json.load(f))
     except Exception:
-        pass
+        application.state.game = ErloGame()
 
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
 
-def advance_turn():
-    global current_player_idx
-    current_player_idx = (current_player_idx + 1) % len(game.players)
+    templates = Jinja2Templates(directory=static_dir)
+    application.mount("/static", StaticFiles(directory=static_dir), name="static")
 
+    def persist():
+        try:
+            with open(SAVE_PATH, "w") as f:
+                json.dump(application.state.game.save(), f)
+        except Exception:
+            pass
 
-# Get absolute path to static directory
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-if not os.path.exists(static_dir):
-    os.makedirs(static_dir)
+    def advance_turn():
+        g = application.state.game
+        g.current_player_idx = (g.current_player_idx + 1) % len(g.players)
 
-templates = Jinja2Templates(directory=static_dir)
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    @application.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        from fastapi.responses import Response
 
+        return Response(content=b"", media_type="image/x-icon")
 
-@app.get("/favicon.ico", include_in_schema=False)
-async def favicon():
-    from fastapi.responses import Response
+    @application.get("/", response_class=HTMLResponse)
+    async def read_root(request: Request):
+        return templates.TemplateResponse(request, "index.html")
 
-    return Response(content=b"", media_type="image/x-icon")
+    @application.get("/state")
+    async def get_state():
+        return application.state.game.get_state()
 
+    @application.post("/roll")
+    async def roll():
+        g = application.state.game
+        if g.game_over:
+            persist()
+            return {
+                "messages": [],
+                "state": g.get_state(),
+                "moves": [],
+                "rolled_by": g.current_player_idx,
+                "roll": None,
+            }
 
-@app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+        if g.pending_purchase is not None:
+            p = g.players[g.pending_purchase["player_idx"]]
+            return {
+                "messages": [MESSAGES["purchase_required"].format(name=p.name)],
+                "state": g.get_state(),
+                "moves": [],
+                "rolled_by": g.current_player_idx,
+                "roll": None,
+            }
 
+        if g.active_auction is not None:
+            return {
+                "messages": [MESSAGES["auction_in_progress"]],
+                "state": g.get_state(),
+                "moves": [],
+                "rolled_by": g.current_player_idx,
+                "roll": None,
+            }
 
-@app.get("/state")
-async def get_state():
-    state = game.get_state()
-    state["current_player_idx"] = current_player_idx
-    return state
+        rolled_by = g.current_player_idx
+        player = g.players[g.current_player_idx]
+        messages = g.play_turn(player)
 
+        if player.money < 0:
+            g.game_over = True
 
-@app.post("/roll")
-async def roll():
-    global current_player_idx
-    if game.game_over:
-        state = game.get_state()
-        state["current_player_idx"] = current_player_idx
+        if not g.game_over and g.pending_purchase is None:
+            advance_turn()
+
         persist()
         return {
-            "messages": [],
-            "state": state,
-            "moves": [],
-            "rolled_by": current_player_idx,
-            "roll": None,
+            "messages": messages,
+            "state": g.get_state(),
+            "moves": g.last_moves,
+            "rolled_by": rolled_by,
+            "roll": g.last_roll,
         }
 
-    # A pending buy decision blocks rolling until it is resolved
-    if game.pending_purchase is not None:
-        p = game.players[game.pending_purchase["player_idx"]]
-        state = game.get_state()
-        state["current_player_idx"] = current_player_idx
-        return {
-            "messages": [MESSAGES["purchase_required"].format(name=p.name)],
-            "state": state,
-            "moves": [],
-            "rolled_by": current_player_idx,
-            "roll": None,
-        }
+    @application.post("/purchase/decide")
+    async def purchase_decide(decision: PurchaseDecision):
+        g = application.state.game
+        had_pending = g.pending_purchase is not None
+        messages = g.decide_purchase(decision.decision == "buy")
+        if (
+            had_pending
+            and g.pending_purchase is None
+            and g.active_auction is None
+            and not g.game_over
+        ):
+            advance_turn()
+        elif g.active_auction is not None:
+            g.current_player_idx = g.active_auction["auction_turn"]
+        persist()
+        return {"messages": messages, "state": g.get_state()}
 
-    rolled_by = current_player_idx
-    player = game.players[current_player_idx]
-    messages = game.play_turn(player)
-
-    if player.money < 0:
-        game.game_over = True
-
-    # Pending purchase pauses the turn: same player must decide first
-    if not game.game_over and game.pending_purchase is None:
-        advance_turn()
-
-    # current_player_idx inside state is authoritative everywhere
-    state = game.get_state()
-    state["current_player_idx"] = current_player_idx
-    persist()
-
-    return {
-        "messages": messages,
-        "state": state,
-        "moves": game.last_moves,
-        "rolled_by": rolled_by,
-        "roll": game.last_roll,
-    }
-
-
-@app.post("/purchase/decide")
-async def purchase_decide(decision: PurchaseDecision):
-    had_pending = game.pending_purchase is not None
-    messages = game.decide_purchase(decision.decision == "buy")
-    if had_pending and game.pending_purchase is None and not game.game_over:
-        advance_turn()
-    state = game.get_state()
-    state["current_player_idx"] = current_player_idx
-    persist()
-    return {"messages": messages, "state": state}
-
-
-@app.post("/trade/offer")
-async def trade_offer(offer: TradeOffer):
-    if offer.proposer_idx != current_player_idx:
-        raise HTTPException(
-            status_code=400, detail="Only current player can propose trade"
+    @application.post("/trade/offer")
+    async def trade_offer(offer: TradeOffer):
+        g = application.state.game
+        if offer.proposer_idx != g.current_player_idx:
+            raise HTTPException(
+                status_code=400, detail="Only current player can propose trade"
+            )
+        messages = g.propose_trade(
+            offer.proposer_idx,
+            offer.target_idx,
+            offer.property_name,
+            offer.price,
+            offer.action,
         )
-    messages = game.propose_trade(
-        offer.proposer_idx,
-        offer.target_idx,
-        offer.property_name,
-        offer.price,
-        offer.action,
-    )
-    state = game.get_state()
-    state["current_player_idx"] = current_player_idx
-    persist()
-    return {"messages": messages, "state": state}
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/trade/respond")
+    async def trade_respond(resp: TradeResponse):
+        g = application.state.game
+        messages = g.respond_trade(resp.responder_idx, resp.response, resp.new_price)
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/auction/bid")
+    async def auction_bid(bid: AuctionBid):
+        g = application.state.game
+        messages = g.place_bid(bid.player_idx, bid.amount)
+        if g.active_auction is not None:
+            g.current_player_idx = g.active_auction["auction_turn"]
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/auction/pass")
+    async def auction_pass(pass_req: AuctionPass):
+        g = application.state.game
+        original_player = (
+            g.active_auction["original_player"] if g.active_auction else None
+        )
+        messages = g.pass_bid(pass_req.player_idx)
+        if g.active_auction is not None:
+            g.current_player_idx = g.active_auction["auction_turn"]
+        else:
+            # Auction ended: turn goes to player after the original decliner
+            g.current_player_idx = (original_player + 1) % len(g.players)
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/reset")
+    async def reset():
+        application.state.game = ErloGame()
+        if os.path.exists(SAVE_PATH):
+            os.remove(SAVE_PATH)
+        return {"message": "Game reset", "state": application.state.game.get_state()}
+
+    @application.post("/debug/state")
+    async def debug_state(payload: DebugState):
+        if os.environ.get("ERLO_ALLOW_INJECTION") != "1":
+            raise HTTPException(status_code=403, detail="State injection disabled")
+        new_game = ErloGame()
+        new_game.restore(payload.state)
+        application.state.game = new_game
+        return {
+            "message": "state injected",
+            "state": application.state.game.get_state(),
+        }
+
+    return application
 
 
-@app.post("/trade/respond")
-async def trade_respond(resp: TradeResponse):
-    messages = game.respond_trade(resp.responder_idx, resp.response, resp.new_price)
-    state = game.get_state()
-    state["current_player_idx"] = current_player_idx
-    persist()
-    return {"messages": messages, "state": state}
-
-
-@app.post("/reset")
-async def reset():
-    global game, current_player_idx
-    game = ErloGame()
-    current_player_idx = 0
-    if os.path.exists(SAVE_PATH):
-        os.remove(SAVE_PATH)
-    return {"message": "Game reset", "state": game.get_state()}
-
-
-@app.post("/debug/state")
-async def debug_state(payload: DebugState):
-    if os.environ.get("ERLO_ALLOW_INJECTION") != "1":
-        raise HTTPException(status_code=403, detail="State injection disabled")
-    global game, current_player_idx
-    new_game = ErloGame()
-    new_game.restore(payload.state)
-    game = new_game
-    current_player_idx = int(payload.state.get("current_player_idx", 0))
-    return {"message": "state injected", "state": game.get_state()}
+app = create_app()
 
 
 if __name__ == "__main__":

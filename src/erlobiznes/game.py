@@ -16,6 +16,8 @@ class ErloGame:
         self.game_over = False
         self.active_trade = None
         self.pending_purchase = None
+        self.active_auction = None
+        self.current_player_idx = 0
         self.last_roll = None
         self.last_moves = []
 
@@ -105,6 +107,10 @@ class ErloGame:
             if self.pending_purchase is not None:
                 return results
 
+            # Auction pauses the turn
+            if self.active_auction is not None:
+                return results
+
             if not is_double:
                 return results
             results.append(MESSAGES["extra_roll"].format(name=p.name))
@@ -166,18 +172,11 @@ class ErloGame:
             else:
                 price = field.get("price", 0)
                 results.append(MESSAGES["unowned_price"].format(price=price))
-                if p.money >= price:
-                    self.pending_purchase = {
-                        "player_idx": self.players.index(p),
-                        "field": pos,
-                        "price": price,
-                    }
-                else:
-                    results.append(
-                        MESSAGES["cannot_afford"].format(
-                            name=p.name, field_name=field["__name__"]
-                        )
-                    )
+                self.pending_purchase = {
+                    "player_idx": self.players.index(p),
+                    "field": pos,
+                    "price": price,
+                }
 
         elif field["type"] == "tax":
             cost = field.get("cost", 200)
@@ -302,25 +301,118 @@ class ErloGame:
         field_name = self.board.fields[pos]["__name__"]
 
         if not accept:
-            self.pending_purchase = None
-            return [
-                MESSAGES["declined_purchase"].format(name=p.name, field_name=field_name)
-            ]
-
-        # Guard: funds may have changed since landing
-        if p.money < price:
+            # Start auction at half price
+            self.active_auction = {
+                "field": pos,
+                "starting_price": price // 2,
+                "current_bid": 0,
+                "current_bidder": None,
+                "auction_turn": (self.pending_purchase["player_idx"] + 1)
+                % len(self.players),
+                "pass_count": 0,
+                "original_player": self.pending_purchase["player_idx"],
+            }
             self.pending_purchase = None
             return [
                 MESSAGES["declined_purchase"].format(
                     name=p.name, field_name=field_name
                 ),
+                MESSAGES["auction_opened"].format(
+                    field_name=field_name, price=price // 2
+                ),
+            ]
+
+        # Guard: funds may have changed since landing
+        if p.money < price:
+            self.active_auction = {
+                "field": pos,
+                "starting_price": price // 2,
+                "current_bid": 0,
+                "current_bidder": None,
+                "auction_turn": (self.pending_purchase["player_idx"] + 1)
+                % len(self.players),
+                "pass_count": 0,
+                "original_player": self.pending_purchase["player_idx"],
+            }
+            self.pending_purchase = None
+            return [
                 MESSAGES["cannot_afford"].format(name=p.name, field_name=field_name),
+                MESSAGES["auction_opened"].format(
+                    field_name=field_name, price=price // 2
+                ),
             ]
 
         p.pay(price)
         p.properties.append(self.board.fields[pos])
         self.pending_purchase = None
         return [MESSAGES["bought_property"].format(name=p.name, field_name=field_name)]
+
+    def place_bid(self, player_idx: int, amount: int) -> list[str]:
+        if not self.active_auction:
+            return [MESSAGES["no_active_trade"]]
+
+        if player_idx != self.active_auction["auction_turn"]:
+            return [MESSAGES["not_your_auction_turn"]]
+
+        if self.active_auction["current_bidder"] is None:
+            if amount < self.active_auction["starting_price"]:
+                return [MESSAGES["bid_too_low"]]
+        elif amount <= self.active_auction["current_bid"]:
+            return [MESSAGES["bid_too_low"]]
+
+        p = self.players[player_idx]
+        if p.money < amount:
+            return [MESSAGES["cannot_afford_bid"]]
+
+        self.active_auction["current_bid"] = amount
+        self.active_auction["current_bidder"] = player_idx
+        self.active_auction["pass_count"] = 0
+        self.active_auction["auction_turn"] = (player_idx + 1) % len(self.players)
+
+        field_name = self.board.fields[self.active_auction["field"]]["__name__"]
+        return [
+            MESSAGES["auction_bid"].format(
+                name=p.name, amount=amount, field_name=field_name
+            )
+        ]
+
+    def pass_bid(self, player_idx: int) -> list[str]:
+        if not self.active_auction:
+            return [MESSAGES["no_active_trade"]]
+
+        if player_idx != self.active_auction["auction_turn"]:
+            return [MESSAGES["not_your_auction_turn"]]
+
+        self.active_auction["pass_count"] += 1
+        self.active_auction["auction_turn"] = (player_idx + 1) % len(self.players)
+
+        p = self.players[player_idx]
+        field_name = self.board.fields[self.active_auction["field"]]["__name__"]
+
+        # Check if auction ends (all but one passed)
+        if self.active_auction["pass_count"] >= len(self.players) - 1:
+            if self.active_auction["current_bidder"] is not None:
+                winner = self.players[self.active_auction["current_bidder"]]
+                amount = self.active_auction["current_bid"]
+                winner.pay(amount)
+                winner.properties.append(
+                    self.board.fields[self.active_auction["field"]]
+                )
+                self.active_auction = None
+                return [
+                    MESSAGES["auction_pass"].format(name=p.name),
+                    MESSAGES["auction_won"].format(
+                        name=winner.name, field_name=field_name, amount=amount
+                    ),
+                ]
+            else:
+                self.active_auction = None
+                return [
+                    MESSAGES["auction_pass"].format(name=p.name),
+                    MESSAGES["auction_no_bids"].format(field_name=field_name),
+                ]
+
+        return [MESSAGES["auction_pass"].format(name=p.name)]
 
     def get_state(self):
         winner = None
@@ -357,6 +449,8 @@ class ErloGame:
             "winner": winner,
             "active_trade": self.active_trade,
             "pending_purchase": self.pending_purchase,
+            "active_auction": self.active_auction,
+            "current_player_idx": self.current_player_idx,
         }
 
     def save(self) -> dict:
@@ -377,6 +471,8 @@ class ErloGame:
             "deck_blue": [card.text for card in self.blue_deck.deck],
             "active_trade": self.active_trade or None,
             "pending_purchase": self.pending_purchase or None,
+            "active_auction": self.active_auction or None,
+            "current_player_idx": self.current_player_idx,
             "game_over": bool(self.game_over),
         }
 
@@ -409,8 +505,10 @@ class ErloGame:
         blue.deck = [blue_by_text[t] for t in saved_blue if t in blue_by_text]
         self.blue_deck = blue
 
-        self.active_trade = data.get("active_trade")
-        self.pending_purchase = data.get("pending_purchase")
+        self.active_trade = None
+        self.pending_purchase = None
+        self.active_auction = None
+        self.current_player_idx = data.get("current_player_idx", 0)
         self.game_over = data.get("game_over", False)
 
     def run_cli(self):

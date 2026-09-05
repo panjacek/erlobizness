@@ -13,8 +13,8 @@ How the backend, frontend and tests fit together. Implemented rules:
 | `src/erlobiznes/player.py` | `Player`: money/position/properties/in_jail; `walk()` (returns crossings of Start), `attempt_jail_escape()` (skip 2 turns), `pay()`/`receive()` (pay may go negative) |
 | `src/erlobiznes/cards.py` | Chance cards as action functions + `CardDeck.draw()`; red and blue decks |
 | `src/erlobiznes/lang_pl.py` | `MESSAGES` — Polish log templates used by the engine (backend messages are not i18n-switchable) |
-| `src/erlobiznes/game.py` | `ErloGame` engine: `play_turn`, field resolution (rent/buy/tax/chance/jail), trade state (`active_trade`, pending purchase), `get_state()` |
-| `src/erlobiznes/web_app.py` | FastAPI routes around one global game instance |
+| `src/erlobiznes/game.py` | `ErloGame` engine: `play_turn`, field resolution (rent/buy/tax/chance/jail), trade state (`active_trade`, pending purchase, `active_auction`), `get_state()` |
+| `src/erlobiznes/web_app.py` | FastAPI app factory (`create_app`), game stored on `app.state.game` |
 | `src/erlobiznes/static/main.js` | UI: board render, dice/pawn animation, trade modals, log; consumes structured API data only |
 | `src/erlobiznes/static/lang/pl.json` | UI strings via `data-i18n` keys (frontend i18n) |
 
@@ -48,28 +48,33 @@ How the backend, frontend and tests fit together. Implemented rules:
 7. Frontend animates each entry of `moves[]` in order (~900 ms dice shake,
    then 140 ms per field step). It reads positions/totals from the JSON —
    it never parses the human-readable log strings (those are display-only).
-8. Purchase decision flow: an unowned, affordable property sets
-   `game.pending_purchase` instead of auto-buying. `/roll` refuses while a
-   purchase is pending; the client shows buy/decline buttons that POST
-   `/purchase/decide` with `{decision: "buy" | "decline"}` — this resolves
-   the purchase and advances the turn.
+8. Purchase decision flow: an unowned property sets `game.pending_purchase`.
+   `/roll` refuses while a purchase is pending; the client shows buy/decline
+   buttons that POST `/purchase/decide` with `{decision: "buy" | "decline"}`.
+9. Auction flow: declining (or unaffordable) starts `game.active_auction`
+   at half price. `/roll` refuses during auction. Client shows bid/pass
+   buttons; POST `/auction/bid` or `/auction/pass`. Auction ends when all
+   but one player pass: winner pays bank, or field stays unowned.
 
 ## State ownership
 
-The whole match lives in one module-level global `game = ErloGame()` plus
-`current_player_idx` inside `web_app.py`. There is no session handling by
-design (hot-seat POC). Documented limitation: **multi-tab** — every open tab
-shares the same server-side game; two tabs are two views of one match, not
-two matches, and either can act as the current player. Single uvicorn worker
-assumed; state is lost on restart (only `/reset` rebuilds it).
+The whole match lives in `app.state.game` (an `ErloGame` instance) managed
+by `create_app()` factory. `current_player_idx` is now part of game state.
+There is no session handling by design (hot-seat POC). Documented limitation:
+**multi-tab** — every open tab shares the same server-side game; two tabs
+are two views of one match, not two matches, and either can act as the
+current player. Single uvicorn worker assumed; state is lost on restart
+(only `/reset` rebuilds it).
 
 ## API contract
 
 | endpoint | request | response essentials |
 |----------|---------|---------------------|
-| `GET /state` | – | players (name, position, money, properties, in_jail), board (40 fields), `game_over`, `active_trade`, `current_player_idx` |
-| `POST /roll` | – | `{messages, state, moves[], rolled_by, roll}`; empty moves + current state if game over; refused while a purchase is pending |
-| `POST /purchase/decide` | `{decision: "buy"\|"decline"}` | messages + state; resolves `pending_purchase`, advances turn |
+| `GET /state` | – | players (name, position, money, properties, in_jail), board (40 fields), `game_over`, `active_trade`, `active_auction`, `current_player_idx` |
+| `POST /roll` | – | `{messages, state, moves[], rolled_by, roll}`; empty moves + current state if game over; refused while purchase/auction pending |
+| `POST /purchase/decide` | `{decision: "buy"\|"decline"}` | messages + state; resolves `pending_purchase`, may start `active_auction`, advances turn |
+| `POST /auction/bid` | `{player_idx, amount}` | messages + state; advances turn if auction closes |
+| `POST /auction/pass` | `{player_idx}` | messages + state; advances turn if auction closes |
 | `POST /trade/offer` | `{proposer_idx, target_idx, property_name, price, action: "buy"\|"sell"}` | messages + state (with `active_trade` set); HTTP 400 if proposer ≠ current player; price must be positive int |
 | `POST /trade/respond` | `{responder_idx, response: "accept"\|"reject"\|"counter", new_price?}` | messages + state; accept swaps money+property after funds check, counter flips roles and keeps the offer alive on invalid input |
 | `POST /reset` | – | fresh game, `current_player_idx = 0` |

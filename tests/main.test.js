@@ -20,16 +20,47 @@ describe("main.js tests", () => {
                 <body>
                     <button id="roll-btn"></button>
                     <button id="reset-btn"></button>
+                    <select id="theme-select"></select>
                     <div id="player-stats"></div>
                     <div id="game-log"></div>
                     <div id="board-container"></div>
                     <div id="dice-container"></div>
                     <div id="dice-visual"></div>
                     <div id="dice-total"></div>
+                    <button id="trade-btn"></button>
+                    <div id="trade-init-modal"></div>
+                    <select id="trade-target-select"></select>
+                    <select id="trade-action-select"></select>
+                    <select id="trade-property-select"></select>
+                    <input id="trade-price-input" type="number">
+                    <button id="trade-init-send"></button>
+                    <button id="trade-init-cancel"></button>
+                    <div id="trade-respond-modal"></div>
+                    <p id="trade-respond-text"></p>
+                    <div id="trade-counter-section"></div>
+                    <input id="trade-counter-price" type="number">
+                    <button id="trade-btn-accept"></button>
+                    <button id="trade-btn-reject"></button>
+                    <button id="trade-btn-counter"></button>
+                    <button id="trade-btn-send-counter"></button>
+                    <div id="buy-modal"></div>
+                    <p id="buy-modal-text"></p>
+                    <button id="buy-accept"></button>
+                    <button id="buy-decline"></button>
+                    <div id="auction-modal"></div>
+                    <p id="auction-text"></p>
+                    <span id="auction-current-bid"></span>
+                    <div id="auction-bid-section"></div>
+                    <input id="auction-bid-input" type="number">
+                    <button id="auction-bid-btn"></button>
+                    <button id="auction-pass-btn"></button>
+                    <div id="game-over-modal"></div>
+                    <p id="game-over-text"></p>
+                    <button id="game-over-reset"></button>
                 </body>
             </html>
         `,
-			{ runScripts: "dangerously", resources: "usable" },
+			{ runScripts: "dangerously", resources: "usable", url: "http://localhost" },
 		);
 
 		window = dom.window;
@@ -86,7 +117,7 @@ describe("main.js tests", () => {
 	});
 
 	it("validateBoard should log error if fields are not 40", () => {
-		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => { });
+		const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		window.validateBoard();
 		expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Expected 40 fields"));
 		consoleSpy.mockRestore();
@@ -117,5 +148,145 @@ describe("main.js tests", () => {
 
 		const field1 = document.getElementById("field-1");
 		expect(field1.className).toContain("owned-p0");
+	});
+
+	it("checkAuctionState shows modal when auction active", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: 3000, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: {
+				field: 3,
+				starting_price: 60,
+				current_bid: 0,
+				current_bidder: null,
+				auction_turn: 0,
+				pass_count: 0,
+			},
+		};
+
+		window.checkAuctionState();
+
+		const modal = document.getElementById("auction-modal");
+		expect(modal.style.display).toBe("block");
+	});
+
+	it("checkAuctionState hides modal when no auction", () => {
+		window.gameState = {
+			players: [{ name: "A", position: 0, money: 3000, properties: [], in_jail: false }],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: null,
+		};
+
+		window.checkAuctionState();
+
+		const modal = document.getElementById("auction-modal");
+		expect(modal.style.display).toBe("none");
+	});
+
+	it("checkAuctionState hides modal when not my turn", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: 3000, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: {
+				field: 3,
+				starting_price: 60,
+				current_bid: 0,
+				current_bidder: null,
+				auction_turn: 1,
+				pass_count: 0,
+			},
+		};
+
+		window.checkAuctionState();
+
+		const modal = document.getElementById("auction-modal");
+		expect(modal.style.display).toBe("none");
+	});
+
+	it("checkAuctionState shows bid buttons only on my turn", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: 3000, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: {
+				field: 3,
+				starting_price: 60,
+				current_bid: 0,
+				current_bidder: null,
+				auction_turn: 0,
+				pass_count: 0,
+			},
+		};
+
+		window.checkAuctionState();
+
+		expect(document.getElementById("auction-bid-btn").style.display).toBe("block");
+		expect(document.getElementById("auction-pass-btn").style.display).toBe("block");
+
+		// Now set to other player's turn
+		window.gameState.active_auction.auction_turn = 1;
+		window.checkAuctionState();
+
+		expect(document.getElementById("auction-bid-btn").style.display).toBe("none");
+		expect(document.getElementById("auction-pass-btn").style.display).toBe("none");
+	});
+
+	it("checkPurchaseState shows modal when pending", () => {
+		window.gameState = {
+			players: [{ name: "A", position: 0, money: 3000, properties: [], in_jail: false }],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			pending_purchase: { field: 3, price: 120, player_idx: 0 },
+			game_over: false,
+		};
+
+		window.checkPurchaseState();
+
+		const modal = document.getElementById("buy-modal");
+		expect(modal.style.display).toBe("block");
+		const text = document.getElementById("buy-modal-text").textContent;
+		expect(text).toContain("120");
+	});
+
+	it("checkGameOverState shows modal when game over", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: -100, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			game_over: true,
+			winner: "A",
+		};
+
+		window.checkGameOverState();
+
+		const modal = document.getElementById("game-over-modal");
+		expect(modal.style.display).toBe("block");
+		expect(document.getElementById("game-over-text").textContent).toContain("A");
+	});
+
+	it("addLog prepends entries", () => {
+		window.addLog("first");
+		window.addLog("second");
+
+		const log = document.getElementById("game-log");
+		const entries = log.querySelectorAll(".log-entry");
+		expect(entries.length).toBe(2);
+		expect(entries[0].textContent).toBe("second");
+		expect(entries[1].textContent).toBe("first");
 	});
 });

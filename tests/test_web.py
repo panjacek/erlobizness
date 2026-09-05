@@ -2,7 +2,6 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from erlobiznes import web_app as web_mod
 from erlobiznes.web_app import app
 
 client = TestClient(app)
@@ -11,15 +10,17 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def isolated_save_path(tmp_path, monkeypatch):
     """Point SAVE_PATH into tmp_path so tests never touch the real tempdir."""
+    from erlobiznes import web_app
+
     path = tmp_path / "erlo_save.json"
-    monkeypatch.setattr(web_mod, "SAVE_PATH", str(path))
+    monkeypatch.setattr(web_app, "SAVE_PATH", str(path))
     return path
 
 
 def _roll_to_pending(mocker):
     """Reset, then deterministically land on Ateny (idx 3)."""
     client.post("/reset")
-    mocker.patch.object(web_mod.game.dice, "roll", side_effect=[1, 2])
+    mocker.patch.object(app.state.game.dice, "roll", side_effect=[1, 2])
     return client.post("/roll").json()
 
 
@@ -40,18 +41,15 @@ def test_get_state():
 
 def test_roll_dice(mocker):
     client.post("/reset")
-    # (1,3) lands on the tax field: no purchase pending, turn advances
-    mocker.patch.object(web_mod.game.dice, "roll", side_effect=[1, 3])
+    mocker.patch.object(app.state.game.dice, "roll", side_effect=[1, 3])
 
     idx1 = 0
 
-    # Roll
     response = client.post("/roll")
     assert response.status_code == 200
     data = response.json()
     assert "messages" in data
     assert data["rolled_by"] == idx1
-    # current_player_idx inside state is authoritative
     assert data["state"]["current_player_idx"] == (idx1 + 1) % 2
 
     moves = data["moves"]
@@ -65,7 +63,6 @@ def test_roll_dice(mocker):
             assert 1 <= d <= 6
         assert roll["total"] == sum(pair)
         assert move["end"] == (move["start"] + roll["total"]) % 40
-    # Moves chain end-to-start
     for prev, nxt in zip(moves, moves[1:]):
         assert nxt["start"] == prev["end"]
 
@@ -99,7 +96,6 @@ def test_purchase_decide_buy_advances_turn(mocker):
     prop_names = [p["name"] for p in state["players"][0]["properties"]]
     assert "Ateny" in prop_names
     assert state["players"][0]["money"] == 3000 - 120
-    # Turn advanced to the other player only after the decision
     assert state["current_player_idx"] == 1
 
 
@@ -123,12 +119,12 @@ def test_purchase_decide_invalid_body_rejected():
 
 
 def test_roll_after_game_over_shape():
-    web_mod.game.game_over = True
+    app.state.game.game_over = True
     response = client.post("/roll")
     data = response.json()
     assert data["state"]["game_over"] is True
     assert data["moves"] == []
-    web_mod.game.game_over = False
+    app.state.game.game_over = False
 
 
 def test_reset_game():
@@ -149,8 +145,7 @@ def test_reset_game():
 class TestPersistenceWeb:
     def test_roll_writes_save_file(self, mocker, isolated_save_path):
         client.post("/reset")
-        # (1,3) -> tax field, no pending purchase, turn advances
-        mocker.patch.object(web_mod.game.dice, "roll", side_effect=[1, 3])
+        mocker.patch.object(app.state.game.dice, "roll", side_effect=[1, 3])
         resp = client.post("/roll")
         assert resp.status_code == 200
 
@@ -175,7 +170,7 @@ class TestPersistenceWeb:
         monkeypatch.setenv("ERLO_ALLOW_INJECTION", "1")
 
         client.post("/reset")
-        payload_state = web_mod.game.save()
+        payload_state = app.state.game.save()
         payload_state["players"][0]["money"] = 777
         payload_state["players"][0]["position"] = 13
         payload_state["current_player_idx"] = 0
@@ -189,7 +184,6 @@ class TestPersistenceWeb:
         assert after["players"][0]["position"] == 13
         assert after["current_player_idx"] == 0
 
-        # Leave a clean global game for any other tests
         client.post("/reset")
 
     def test_game_over_state_reports_winner(self, monkeypatch):
@@ -197,7 +191,7 @@ class TestPersistenceWeb:
         monkeypatch.setenv("ERLO_ALLOW_INJECTION", "1")
 
         client.post("/reset")
-        payload_state = web_mod.game.save()
+        payload_state = app.state.game.save()
         payload_state["game_over"] = True
         payload_state["players"][0]["money"] = -100
         payload_state["current_player_idx"] = 0
@@ -209,5 +203,158 @@ class TestPersistenceWeb:
         assert after["game_over"] is True
         assert after["winner"] == after["players"][1]["name"]
 
-        # Leave a clean global game for any other tests
+        client.post("/reset")
+
+
+class TestAuctionWeb:
+    def test_roll_blocked_during_auction(self, mocker):
+        client.post("/reset")
+        app.state.game.active_auction = {
+            "field": 3,
+            "starting_price": 60,
+            "current_bid": 0,
+            "current_bidder": None,
+            "auction_turn": 0,
+            "pass_count": 0,
+            "original_player": 0,
+        }
+
+        response = client.post("/roll")
+        data = response.json()
+        assert any("Trwa licytacja" in m for m in data["messages"])
+        assert data["moves"] == []
+        assert data["state"]["active_auction"] is not None
+
+        app.state.game.active_auction = None
+
+    def test_auction_bid_endpoint_advances_turn_on_close(self, mocker):
+        client.post("/reset")
+        app.state.game.active_auction = {
+            "field": 3,
+            "starting_price": 60,
+            "current_bid": 0,
+            "current_bidder": None,
+            "auction_turn": 0,
+            "pass_count": 0,
+            "original_player": 0,
+        }
+        app.state.game.current_player_idx = 0
+
+        response = client.post("/auction/bid", json={"player_idx": 0, "amount": 100})
+        assert response.status_code == 200
+        data = response.json()
+        assert any("licytuje" in m for m in data["messages"])
+        assert data["state"]["active_auction"]["current_bid"] == 100
+        assert data["state"]["active_auction"]["auction_turn"] == 1
+
+        response = client.post("/auction/pass", json={"player_idx": 1})
+        assert response.status_code == 200
+        data = response.json()
+        assert any("wygrywa licytację" in m for m in data["messages"])
+        assert data["state"]["active_auction"] is None
+        assert data["state"]["current_player_idx"] == 1
+
+        client.post("/reset")
+
+    def test_auction_pass_endpoint_advances_turn_on_close(self, mocker):
+        client.post("/reset")
+        app.state.game.active_auction = {
+            "field": 3,
+            "starting_price": 60,
+            "current_bid": 0,
+            "current_bidder": None,
+            "auction_turn": 0,
+            "pass_count": 0,
+            "original_player": 0,
+        }
+        app.state.game.current_player_idx = 0
+
+        response = client.post("/auction/pass", json={"player_idx": 0})
+        assert response.status_code == 200
+        data = response.json()
+        assert any("Pole pozostaje własnością banku" in m for m in data["messages"])
+        assert data["state"]["active_auction"] is None
+        assert data["state"]["current_player_idx"] == 1
+
+        client.post("/reset")
+
+    def test_auction_bid_rejected_wrong_turn(self):
+        client.post("/reset")
+        app.state.game.active_auction = {
+            "field": 3,
+            "starting_price": 60,
+            "current_bid": 0,
+            "current_bidder": None,
+            "auction_turn": 0,
+            "pass_count": 0,
+            "original_player": 0,
+        }
+
+        response = client.post("/auction/bid", json={"player_idx": 1, "amount": 100})
+        assert response.status_code == 200
+        data = response.json()
+        assert any("Nie twoja kolej" in m for m in data["messages"])
+
+        app.state.game.active_auction = None
+
+    def test_decline_starts_auction(self, mocker):
+        client.post("/reset")
+        mocker.patch.object(app.state.game.dice, "roll", side_effect=[1, 2])
+        response = client.post("/roll")
+        data = response.json()
+        assert data["state"]["pending_purchase"] is not None
+
+        response = client.post("/purchase/decide", json={"decision": "decline"})
+        data = response.json()
+        assert any("Licytacja" in m for m in data["messages"])
+        assert data["state"]["active_auction"] is not None
+        assert data["state"]["active_auction"]["starting_price"] == 60
+        assert data["state"]["current_player_idx"] == 1
+
+        client.post("/reset")
+
+    def test_full_auction_flow_roll_decline_bid_pass(self, mocker):
+        client.post("/reset")
+        g = app.state.game
+        mocker.patch.object(g.dice, "roll", side_effect=[1, 2, 3, 4])
+
+        resp = client.post("/roll").json()
+        assert resp["state"]["pending_purchase"] is not None
+        assert resp["state"]["current_player_idx"] == 0
+
+        resp = client.post("/purchase/decide", json={"decision": "decline"}).json()
+        assert resp["state"]["active_auction"] is not None
+        assert resp["state"]["active_auction"]["original_player"] == 0
+        assert resp["state"]["current_player_idx"] == 1
+
+        resp = client.post("/auction/bid", json={"player_idx": 1, "amount": 100}).json()
+        assert resp["state"]["active_auction"]["auction_turn"] == 0
+        assert resp["state"]["current_player_idx"] == 0
+
+        resp = client.post("/auction/pass", json={"player_idx": 0}).json()
+        assert resp["state"]["active_auction"] is None
+        assert resp["state"]["current_player_idx"] == 1
+
+        resp = client.post("/roll").json()
+        assert resp["state"]["current_player_idx"] == 0
+
+        client.post("/reset")
+
+    def test_full_auction_flow_no_bids(self, mocker):
+        client.post("/reset")
+        g = app.state.game
+        mocker.patch.object(g.dice, "roll", side_effect=[1, 2, 3, 4])
+
+        client.post("/roll")
+        resp = client.post("/purchase/decide", json={"decision": "decline"}).json()
+        assert resp["state"]["current_player_idx"] == 1
+        assert resp["state"]["active_auction"]["original_player"] == 0
+
+        resp = client.post("/auction/pass", json={"player_idx": 1}).json()
+        assert resp["state"]["active_auction"] is None
+        assert resp["state"]["current_player_idx"] == 1
+
+        resp = client.post("/roll").json()
+        assert resp["state"]["current_player_idx"] == 0
+
         client.post("/reset")
