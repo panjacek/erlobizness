@@ -288,8 +288,10 @@ function checkAuctionState() {
 
 		auctionText.textContent = `${field.name}`;
 		auctionCurrentBid.textContent = auction.current_bid;
-		auctionBidInput.value = auction.current_bid + 100;
-		auctionBidInput.min = auction.current_bid + 1;
+		const minBid =
+			auction.current_bidder === null ? auction.starting_price : auction.current_bid + 1;
+		auctionBidInput.value = minBid;
+		auctionBidInput.min = minBid;
 
 		auctionBidSection.style.display = isMyTurn ? "block" : "none";
 		auctionBidBtn.style.display = isMyTurn ? "block" : "none";

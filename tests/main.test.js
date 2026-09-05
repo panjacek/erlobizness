@@ -243,6 +243,56 @@ describe("main.js tests", () => {
 		expect(document.getElementById("auction-pass-btn").style.display).toBe("none");
 	});
 
+	it("checkAuctionState sets input value and min to starting_price when no bids", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: 3000, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: {
+				field: 3,
+				starting_price: 150,
+				current_bid: 0,
+				current_bidder: null,
+				auction_turn: 0,
+				pass_count: 0,
+			},
+		};
+
+		window.checkAuctionState();
+
+		const input = document.getElementById("auction-bid-input");
+		expect(Number(input.value)).toBe(150);
+		expect(Number(input.min)).toBe(150);
+	});
+
+	it("checkAuctionState sets input value and min to current_bid+1 after bids", () => {
+		window.gameState = {
+			players: [
+				{ name: "A", position: 0, money: 3000, properties: [], in_jail: false },
+				{ name: "B", position: 0, money: 3000, properties: [], in_jail: false },
+			],
+			board: Array(40).fill({ name: "Field", type: "city" }),
+			current_player_idx: 0,
+			active_auction: {
+				field: 3,
+				starting_price: 150,
+				current_bid: 200,
+				current_bidder: 1,
+				auction_turn: 0,
+				pass_count: 0,
+			},
+		};
+
+		window.checkAuctionState();
+
+		const input = document.getElementById("auction-bid-input");
+		expect(Number(input.value)).toBe(201);
+		expect(Number(input.min)).toBe(201);
+	});
+
 	it("checkPurchaseState shows modal when pending", () => {
 		window.gameState = {
 			players: [{ name: "A", position: 0, money: 3000, properties: [], in_jail: false }],
