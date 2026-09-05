@@ -1,3 +1,5 @@
+import math
+
 from . import player, cards
 from .board import Board
 from .dice import Dice
@@ -16,6 +18,7 @@ class ErloGame:
         self.game_over = False
         self.active_trade = None
         self.pending_purchase = None
+        self.pending_payment = None
         self.active_auction = None
         self.current_player_idx = 0
         self.last_roll = None
@@ -107,6 +110,10 @@ class ErloGame:
             if self.pending_purchase is not None:
                 return results
 
+            # Payment (rent/tax) pauses the turn
+            if self.pending_payment is not None:
+                return results
+
             # Auction pauses the turn
             if self.active_auction is not None:
                 return results
@@ -135,7 +142,9 @@ class ErloGame:
             if owner:
                 if owner != p:
                     rent = 0
-                    if field["type"] == "city":
+                    if owner.is_mortgaged(field["id"]):
+                        results.append(MESSAGES["property_mortgaged_no_rent"])
+                    elif field["type"] == "city":
                         # Basic rent (index 0)
                         rent = field.get("rent", [10])[0]
                         # Eurobiznes: double rent if owner has all cities of that country
@@ -162,11 +171,27 @@ class ErloGame:
                             )
                         )
 
-                    results.append(
-                        MESSAGES["paying_rent"].format(owner_name=owner.name, rent=rent)
-                    )
-                    p.pay(rent)
-                    owner.receive(rent)
+                    if rent > 0:
+                        if p.money < rent:
+                            self.pending_payment = {
+                                "player_idx": self.players.index(p),
+                                "amount": rent,
+                                "recipient_idx": self.players.index(owner),
+                                "reason": "rent",
+                            }
+                            results.append(
+                                MESSAGES["cannot_afford_rent"].format(
+                                    name=p.name, rent=rent, owner_name=owner.name
+                                )
+                            )
+                        else:
+                            results.append(
+                                MESSAGES["paying_rent"].format(
+                                    owner_name=owner.name, rent=rent
+                                )
+                            )
+                            p.pay(rent)
+                            owner.receive(rent)
                 else:
                     results.append(MESSAGES["own_property"])
             else:
@@ -176,14 +201,28 @@ class ErloGame:
                     "player_idx": self.players.index(p),
                     "field": pos,
                     "price": price,
+                    "awaiting_mortgage": p.money < price,
                 }
 
         elif field["type"] == "tax":
             cost = field.get("cost", 200)
-            results.append(
-                MESSAGES["tax_paid"].format(field_name=field["__name__"], cost=cost)
-            )
-            p.pay(cost)
+            if p.money < cost:
+                self.pending_payment = {
+                    "player_idx": self.players.index(p),
+                    "amount": cost,
+                    "recipient_idx": None,
+                    "reason": "tax",
+                }
+                results.append(
+                    MESSAGES["cannot_afford_tax"].format(
+                        name=p.name, field_name=field["__name__"], cost=cost
+                    )
+                )
+            else:
+                results.append(
+                    MESSAGES["tax_paid"].format(field_name=field["__name__"], cost=cost)
+                )
+                p.pay(cost)
 
         elif field["type"] == "chance":
             if field.get("color") == "red":
@@ -269,6 +308,10 @@ class ErloGame:
                 self.active_trade = None
                 return [MESSAGES["seller_does_not_own"]]
 
+            if seller.is_mortgaged(prop_found["id"]):
+                self.active_trade = None
+                return [MESSAGES["cannot_trade_mortgaged"]]
+
             buyer.pay(price)
             seller.receive(price)
 
@@ -324,28 +367,124 @@ class ErloGame:
 
         # Guard: funds may have changed since landing
         if p.money < price:
-            self.active_auction = {
-                "field": pos,
-                "starting_price": price // 2,
-                "current_bid": 0,
-                "current_bidder": None,
-                "auction_turn": (self.pending_purchase["player_idx"] + 1)
-                % len(self.players),
-                "pass_count": 0,
-                "original_player": self.pending_purchase["player_idx"],
-            }
-            self.pending_purchase = None
+            self.pending_purchase["awaiting_mortgage"] = True
             return [
                 MESSAGES["cannot_afford"].format(name=p.name, field_name=field_name),
-                MESSAGES["auction_opened"].format(
-                    field_name=field_name, price=price // 2
-                ),
             ]
 
         p.pay(price)
         p.properties.append(self.board.fields[pos])
         self.pending_purchase = None
         return [MESSAGES["bought_property"].format(name=p.name, field_name=field_name)]
+
+    def handle_mortgage(self, player_idx: int, prop_id: int) -> list[str]:
+        if player_idx != self.current_player_idx:
+            return [MESSAGES["not_your_turn"]]
+        p = self.players[player_idx]
+        prop = None
+        for field in p.properties:
+            if field["id"] == prop_id:
+                prop = field
+                break
+        if not prop:
+            return [MESSAGES["property_not_owned"]]
+        if p.is_mortgaged(prop_id):
+            return [MESSAGES["property_already_mortgaged"]]
+        p.receive(prop["mortgage"])
+        p.mortgage_property(prop_id)
+        return [
+            MESSAGES["mortgaged"].format(
+                name=p.name, field_name=prop["__name__"], amount=prop["mortgage"]
+            )
+        ]
+
+    def handle_unmortgage(self, player_idx: int, prop_id: int) -> list[str]:
+        if player_idx != self.current_player_idx:
+            return [MESSAGES["not_your_turn"]]
+        p = self.players[player_idx]
+        prop = None
+        for field in p.properties:
+            if field["id"] == prop_id:
+                prop = field
+                break
+        if not prop:
+            return [MESSAGES["property_not_owned"]]
+        if not p.is_mortgaged(prop_id):
+            return [MESSAGES["property_not_mortgaged"]]
+        cost = math.ceil(prop["mortgage"] * 1.1)
+        if p.money < cost:
+            return [MESSAGES["cannot_unmortgage"]]
+        p.pay(cost)
+        p.unmortgage_property(prop_id)
+        return [
+            MESSAGES["unmortgaged"].format(
+                name=p.name, field_name=prop["__name__"], amount=cost
+            )
+        ]
+
+    def try_buy_after_mortgage(self) -> list[str]:
+        if not self.pending_purchase or not self.pending_purchase.get(
+            "awaiting_mortgage"
+        ):
+            return []
+        p = self.players[self.pending_purchase["player_idx"]]
+        pos = self.pending_purchase["field"]
+        price = self.pending_purchase["price"]
+        field_name = self.board.fields[pos]["__name__"]
+        if p.money < price:
+            return [
+                MESSAGES["cannot_afford"].format(name=p.name, field_name=field_name)
+            ]
+        p.pay(price)
+        p.properties.append(self.board.fields[pos])
+        self.pending_purchase = None
+        return [MESSAGES["bought_property"].format(name=p.name, field_name=field_name)]
+
+    def start_auction_from_pending(self) -> list[str]:
+        if not self.pending_purchase or not self.pending_purchase.get(
+            "awaiting_mortgage"
+        ):
+            return []
+        p = self.players[self.pending_purchase["player_idx"]]
+        pos = self.pending_purchase["field"]
+        price = self.pending_purchase["price"]
+        field_name = self.board.fields[pos]["__name__"]
+        self.active_auction = {
+            "field": pos,
+            "starting_price": price // 2,
+            "current_bid": 0,
+            "current_bidder": None,
+            "auction_turn": (self.pending_purchase["player_idx"] + 1)
+            % len(self.players),
+            "pass_count": 0,
+            "original_player": self.pending_purchase["player_idx"],
+        }
+        self.pending_purchase = None
+        return [
+            MESSAGES["declined_purchase"].format(name=p.name, field_name=field_name),
+            MESSAGES["auction_opened"].format(field_name=field_name, price=price // 2),
+        ]
+
+    def resolve_pending_payment(self) -> list[str]:
+        if not self.pending_payment:
+            return []
+        if self.pending_payment["player_idx"] != self.current_player_idx:
+            return [MESSAGES["not_your_turn"]]
+        p = self.players[self.pending_payment["player_idx"]]
+        amount = self.pending_payment["amount"]
+        recipient_idx = self.pending_payment["recipient_idx"]
+        reason = self.pending_payment["reason"]
+        if p.money < amount:
+            return [
+                MESSAGES["still_cannot_afford"].format(
+                    name=p.name, amount=amount, reason=reason
+                )
+            ]
+        p.pay(amount)
+        if recipient_idx is not None:
+            self.players[recipient_idx].receive(amount)
+        self.pending_payment = None
+        return []
 
     def place_bid(self, player_idx: int, amount: int) -> list[str]:
         if not self.active_auction:
@@ -427,9 +566,12 @@ class ErloGame:
                     "money": p.money,
                     "properties": [
                         {
+                            "id": prop["id"],
                             "name": prop["__name__"],
                             "type": prop["type"],
                             "country": prop.get("country"),
+                            "mortgaged": p.is_mortgaged(prop["id"]),
+                            "mortgage_value": prop.get("mortgage", 0),
                         }
                         for prop in p.properties
                     ],
@@ -449,6 +591,7 @@ class ErloGame:
             "winner": winner,
             "active_trade": self.active_trade,
             "pending_purchase": self.pending_purchase,
+            "pending_payment": self.pending_payment,
             "active_auction": self.active_auction,
             "current_player_idx": self.current_player_idx,
         }
@@ -464,6 +607,7 @@ class ErloGame:
                     "in_jail": p.in_jail,
                     "jail_turns": p.jail_turns,
                     "property_ids": [prop["id"] for prop in p.properties],
+                    "mortgaged_ids": sorted(p.mortgaged),
                 }
                 for p in self.players
             ],
@@ -471,6 +615,7 @@ class ErloGame:
             "deck_blue": [card.text for card in self.blue_deck.deck],
             "active_trade": self.active_trade or None,
             "pending_purchase": self.pending_purchase or None,
+            "pending_payment": self.pending_payment or None,
             "active_auction": self.active_auction or None,
             "current_player_idx": self.current_player_idx,
             "game_over": bool(self.game_over),
@@ -492,6 +637,7 @@ class ErloGame:
                 for fid in saved.get("property_ids", [])
                 if fid in field_by_id
             ]
+            live.mortgaged = set(saved.get("mortgaged_ids", []))
 
         saved_red = data.get("deck_red", [])
         red = cards.get_default_red_deck()
@@ -507,6 +653,7 @@ class ErloGame:
 
         self.active_trade = None
         self.pending_purchase = None
+        self.pending_payment = data.get("pending_payment") or None
         self.active_auction = None
         self.current_player_idx = data.get("current_player_idx", 0)
         self.game_over = data.get("game_over", False)

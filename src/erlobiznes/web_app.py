@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from .game import ErloGame
 from .lang_pl import MESSAGES
-from .models import TradeOffer, TradeResponse, AuctionBid, AuctionPass
+from .models import TradeOffer, TradeResponse, AuctionBid, AuctionPass, MortgageRequest
 import json
 import os
 import tempfile
@@ -93,6 +93,16 @@ def create_app() -> FastAPI:
                 "roll": None,
             }
 
+        if g.pending_payment is not None:
+            p = g.players[g.pending_payment["player_idx"]]
+            return {
+                "messages": [MESSAGES["payment_required"].format(name=p.name)],
+                "state": g.get_state(),
+                "moves": [],
+                "rolled_by": g.current_player_idx,
+                "roll": None,
+            }
+
         if g.active_auction is not None:
             return {
                 "messages": [MESSAGES["auction_in_progress"]],
@@ -109,7 +119,7 @@ def create_app() -> FastAPI:
         if player.money < 0:
             g.game_over = True
 
-        if not g.game_over and g.pending_purchase is None:
+        if not g.game_over and g.pending_purchase is None and g.pending_payment is None:
             advance_turn()
 
         persist()
@@ -183,6 +193,55 @@ def create_app() -> FastAPI:
         else:
             # Auction ended: turn goes to player after the original decliner
             g.current_player_idx = (original_player + 1) % len(g.players)
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/mortgage")
+    async def mortgage(req: MortgageRequest):
+        g = application.state.game
+        if g.game_over:
+            persist()
+            return {"messages": [], "state": g.get_state()}
+        messages = g.handle_mortgage(req.player_idx, req.property_id)
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/unmortgage")
+    async def unmortgage(req: MortgageRequest):
+        g = application.state.game
+        if g.game_over:
+            persist()
+            return {"messages": [], "state": g.get_state()}
+        messages = g.handle_unmortgage(req.player_idx, req.property_id)
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/purchase/try")
+    async def purchase_try():
+        g = application.state.game
+        messages = g.try_buy_after_mortgage()
+        if g.pending_purchase is None and not g.game_over:
+            advance_turn()
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/purchase/auction")
+    async def purchase_auction():
+        g = application.state.game
+        messages = g.start_auction_from_pending()
+        if g.active_auction is not None:
+            g.current_player_idx = g.active_auction["auction_turn"]
+        else:
+            advance_turn()
+        persist()
+        return {"messages": messages, "state": g.get_state()}
+
+    @application.post("/payment/resolve")
+    async def payment_resolve():
+        g = application.state.game
+        messages = g.resolve_pending_payment()
+        if g.pending_payment is None and not g.game_over:
+            advance_turn()
         persist()
         return {"messages": messages, "state": g.get_state()}
 

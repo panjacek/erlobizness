@@ -4,9 +4,19 @@ class Player:
         self.position = 0
         self.money = 3000
         self.properties = []
+        self.mortgaged = set()
         self.in_jail = False
         self.jail_turns = 0
         self.get_out_of_jail_free = 0
+
+    def is_mortgaged(self, prop_id):
+        return prop_id in self.mortgaged
+
+    def mortgage_property(self, prop_id):
+        self.mortgaged.add(prop_id)
+
+    def unmortgage_property(self, prop_id):
+        self.mortgaged.discard(prop_id)
 
     def attempt_jail_escape(self):
         self.jail_turns += 1

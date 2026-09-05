@@ -35,6 +35,16 @@ const buyModal = document.getElementById("buy-modal");
 const buyModalText = document.getElementById("buy-modal-text");
 const buyAcceptBtn = document.getElementById("buy-accept");
 const buyDeclineBtn = document.getElementById("buy-decline");
+const buyMortgageSection = document.getElementById("buy-mortgage-section");
+const buyMortgageList = document.getElementById("buy-mortgage-list");
+const buyAuctionBtn = document.getElementById("buy-auction-btn");
+const buyTryBtn = document.getElementById("buy-try-btn");
+
+// Payment (rent/tax) elements
+const paymentModal = document.getElementById("payment-modal");
+const paymentModalText = document.getElementById("payment-modal-text");
+const paymentMortgageList = document.getElementById("payment-mortgage-list");
+const paymentResolveBtn = document.getElementById("payment-resolve-btn");
 
 // Game over elements
 const gameOverModal = document.getElementById("game-over-modal");
@@ -119,11 +129,12 @@ async function rollDice() {
 		addLog(i18n.network_error || "Connection error.");
 	} finally {
 		// Keep the button dead when the game ended, a trade blocks turns,
-		// a buy decision is pending, or an auction is in progress
+		// a buy decision is pending, a payment is pending, or an auction is in progress
 		rollBtn.disabled =
 			!!gameState?.game_over ||
 			!!gameState?.active_trade ||
 			!!gameState?.pending_purchase ||
+			!!gameState?.pending_payment ||
 			!!gameState?.active_auction;
 	}
 }
@@ -181,7 +192,9 @@ function render() {
 								const colorClass = prop.country
 									? `prop-${prop.country.toLowerCase().replace("ą", "a")}`
 									: `prop-${prop.type}`;
-								return `<span class="property-chip ${colorClass}">${prop.name}</span>`;
+								const mortgagedClass = prop.mortgaged ? "mortgaged" : "";
+								const mortgagedIcon = prop.mortgaged ? " 🔒" : "";
+								return `<span class="property-chip ${colorClass} ${mortgagedClass}" data-prop-id="${prop.id}">${prop.name}${mortgagedIcon}</span>`;
 							})
 							.join("")
 					: `<span style="color: var(--text-muted)">${i18n.brak || "none"}</span>`;
@@ -211,6 +224,7 @@ function render() {
 	updateMarkers();
 	checkTradeState();
 	checkPurchaseState();
+	checkPaymentState();
 	checkAuctionState();
 	checkGameOverState();
 }
@@ -265,17 +279,100 @@ function checkTradeState() {
 	}
 }
 
+function renderMortgageList(container, playerIdx, onMortgaged) {
+	const player = gameState.players[playerIdx];
+	container.innerHTML = "";
+	for (const prop of player.properties) {
+		if (prop.mortgaged) continue;
+		const mortgageVal = prop.mortgage_value || 0;
+		const row = document.createElement("div");
+		row.style.cssText = "display:flex;align-items:center;gap:6px;margin:3px 0;font-size:0.8rem;";
+		row.innerHTML = `<span style="flex:1;">${prop.name}</span><span style="color:var(--text-muted);">${mortgageVal}$</span>`;
+		const btn = document.createElement("button");
+		btn.className = "btn secondary";
+		btn.style.cssText = "padding:2px 8px;font-size:0.75rem;";
+		btn.textContent = "Zastaw";
+		btn.addEventListener("click", async () => {
+			btn.disabled = true;
+			await onMortgaged(prop.id);
+		});
+		row.appendChild(btn);
+		container.appendChild(row);
+	}
+	if (container.children.length === 0) {
+		container.innerHTML =
+			'<p style="font-size:0.8rem;color:var(--text-muted);">Brak nieruchomości do zastawienia.</p>';
+	}
+}
+
 function checkPurchaseState() {
 	if (!gameState) return;
 
 	if (gameState.pending_purchase && !gameState.game_over) {
-		const field = gameState.board[gameState.pending_purchase.field];
-		buyModalText.textContent = `${field.name} — ${gameState.pending_purchase.price}$`;
+		const pp = gameState.pending_purchase;
+		const field = gameState.board[pp.field];
+		buyModalText.textContent = `${field.name} — ${pp.price}$`;
+		if (pp.awaiting_mortgage) {
+			buyAcceptBtn.style.display = "none";
+			buyDeclineBtn.style.display = "none";
+			buyAuctionBtn.style.display = "inline-block";
+			buyMortgageSection.style.display = "block";
+			const player = gameState.players[gameState.current_player_idx];
+			buyTryBtn.style.display = player.money >= pp.price ? "inline-block" : "none";
+			renderMortgageList(buyMortgageList, gameState.current_player_idx, async (propId) => {
+				await fetch("/mortgage", {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify({ player_idx: gameState.current_player_idx, property_id: propId }),
+				})
+					.then((r) => r.json())
+					.then((d) => {
+						if (d.state) gameState = d.state;
+						if (d.messages) for (const m of d.messages) addLog(m);
+					});
+				await fetchState();
+			});
+		} else {
+			buyAcceptBtn.style.display = "inline-block";
+			buyDeclineBtn.style.display = "inline-block";
+			buyAuctionBtn.style.display = "none";
+			buyMortgageSection.style.display = "none";
+			buyTryBtn.style.display = "none";
+		}
 		buyModal.style.display = "block";
-		rollBtn.disabled = true; // Decision blocks rolling
+		rollBtn.disabled = true;
 	} else {
 		buyModal.style.display = "none";
 	}
+}
+
+function checkPaymentState() {
+	if (!gameState || !gameState.pending_payment || gameState.game_over) {
+		paymentModal.style.display = "none";
+		return;
+	}
+	const pp = gameState.pending_payment;
+	const player = gameState.players[pp.player_idx];
+	if (pp.reason === "rent") {
+		paymentModalText.textContent = `${player.name} — czynsz ${pp.amount}$`;
+	} else {
+		paymentModalText.textContent = `${player.name} — podatek ${pp.amount}$`;
+	}
+	renderMortgageList(paymentMortgageList, pp.player_idx, async (propId) => {
+		await fetch("/mortgage", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ player_idx: pp.player_idx, property_id: propId }),
+		})
+			.then((r) => r.json())
+			.then((d) => {
+				if (d.state) gameState = d.state;
+				if (d.messages) for (const m of d.messages) addLog(m);
+			});
+		await fetchState();
+	});
+	paymentModal.style.display = "block";
+	rollBtn.disabled = true;
 }
 
 function checkAuctionState() {
@@ -383,7 +480,7 @@ function updateMarkers() {
 		f.classList.remove("owned-p0", "owned-p1");
 	}
 
-	gameState.players.forEach((p, idx) => {
+	for (const [idx, p] of gameState.players.entries()) {
 		const fieldEl = document.getElementById(`field-${p.position}`);
 		if (fieldEl) {
 			const marker = document.createElement("div");
@@ -402,7 +499,7 @@ function updateMarkers() {
 				}
 			}
 		}
-	});
+	}
 }
 
 rollBtn.addEventListener("click", rollDice);
@@ -411,11 +508,11 @@ gameOverResetBtn.addEventListener("click", resetGame);
 
 tradeBtn.addEventListener("click", () => {
 	tradeTargetSelect.innerHTML = "";
-	gameState.players.forEach((p, idx) => {
+	for (const [idx, p] of gameState.players.entries()) {
 		if (idx !== gameState.current_player_idx) {
 			tradeTargetSelect.innerHTML += `<option value="${idx}">${p.name}</option>`;
 		}
-	});
+	}
 
 	updateTradeProperties();
 	tradeInitModal.style.display = "block";
@@ -435,6 +532,7 @@ function updateTradeProperties() {
 
 	tradePropertySelect.innerHTML = "";
 	for (const prop of owner.properties) {
+		if (prop.mortgaged) continue;
 		const propName = prop.name || prop.__name__;
 		tradePropertySelect.innerHTML += `<option value="${propName}">${propName}</option>`;
 	}
@@ -523,6 +621,21 @@ async function sendPurchaseDecision(decision) {
 
 buyAcceptBtn.addEventListener("click", () => sendPurchaseDecision("buy"));
 buyDeclineBtn.addEventListener("click", () => sendPurchaseDecision("decline"));
+buyAuctionBtn.addEventListener("click", async () => {
+	const res = await fetch("/purchase/auction", { method: "POST" });
+	const data = await res.json();
+	handleBackendResponse(data);
+});
+buyTryBtn.addEventListener("click", async () => {
+	const res = await fetch("/purchase/try", { method: "POST" });
+	const data = await res.json();
+	handleBackendResponse(data);
+});
+paymentResolveBtn.addEventListener("click", async () => {
+	const res = await fetch("/payment/resolve", { method: "POST" });
+	const data = await res.json();
+	handleBackendResponse(data);
+});
 
 async function sendAuctionBid() {
 	if (!gameState || !gameState.active_auction) return;
@@ -621,3 +734,40 @@ if (themeSelect) {
 
 // Initial load
 loadLanguage().then(() => fetchState());
+
+// Mortgage buttons
+document.addEventListener("click", async (e) => {
+	if (!gameState) return;
+	const chip = e.target.closest(".property-chip");
+	if (!chip) return;
+	const propId = Number.parseInt(chip.dataset.propId);
+	if (Number.isNaN(propId)) return;
+
+	const player = gameState.players[gameState.current_player_idx];
+	const prop = player.properties.find((p) => p.id === propId);
+	if (!prop) return;
+
+	if (prop.mortgaged) {
+		if (!confirm(`Wykupić zastaw ${prop.name}?`)) return;
+		const res = await fetch("/unmortgage", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ player_idx: gameState.current_player_idx, property_id: propId }),
+		});
+		const data = await res.json();
+		if (data.state) gameState = data.state;
+		if (data.messages) for (const m of data.messages) addLog(m);
+		render();
+	} else {
+		if (!confirm(`Zastawić ${prop.name}?`)) return;
+		const res = await fetch("/mortgage", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ player_idx: gameState.current_player_idx, property_id: propId }),
+		});
+		const data = await res.json();
+		if (data.state) gameState = data.state;
+		if (data.messages) for (const m of data.messages) addLog(m);
+		render();
+	}
+});

@@ -179,7 +179,7 @@ body {
 }
 
 .app-container {
-	max-width: 1600px;
+	max-width: 2200px;
 	margin: 0 auto;
 	height: 100%;
 	display: flex;
@@ -264,10 +264,29 @@ h1 {
 
 .game-layout {
 	display: grid;
-	grid-template-columns: 320px 1fr 320px;
+	grid-template-columns: minmax(280px, 320px) 1fr minmax(280px, 320px);
 	gap: 1.5rem;
 	flex: 1;
 	overflow: hidden;
+}
+
+@media (max-width: 1100px) {
+	.game-layout {
+		grid-template-columns: 260px 1fr 260px;
+		gap: 1rem;
+	}
+}
+
+@media (max-width: 900px) {
+	.game-layout {
+		grid-template-columns: 1fr;
+		grid-template-rows: auto 1fr auto;
+	}
+	.left-panel,
+	.right-panel {
+		max-height: 30vh;
+		overflow-y: auto;
+	}
 }
 
 .right-panel {
@@ -362,7 +381,7 @@ h1 {
 	display: grid;
 	grid-template-columns: repeat(11, 1fr);
 	grid-template-rows: repeat(11, 1fr);
-	height: calc(100vh - 4rem);
+	height: min(calc(100vh - 4rem), calc(100vw - 650px));
 	aspect-ratio: 1 / 1;
 	gap: 1px;
 	background: var(--board-frame);
@@ -566,6 +585,18 @@ h1 {
 	background: var(--surface-hover);
 	color: var(--text-main);
 	border: 1px solid var(--surface-border);
+	cursor: pointer;
+	transition: opacity 0.2s;
+}
+
+.property-chip:hover {
+	opacity: 0.8;
+}
+
+.property-chip.mortgaged {
+	opacity: 0.6;
+	text-decoration: line-through;
+	border-style: dashed;
 }
 
 .prop-grecja {

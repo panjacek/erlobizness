@@ -1,6 +1,7 @@
 # Simple KISS translation dictionary
 MESSAGES = {
     "turn_start": "--- Tura gracza {name} ---",
+    "not_your_turn": "Nie twoja kolej.",
     "jail_escape_attempt": "Próba ucieczki z więzienia...",
     "jail_free": "{name} wychodzi z więzienia!",
     "rolled_doubles_jail": "{name} wyrzucił drugi dublet pod rząd {rolls} i idzie do więzienia!",
@@ -18,6 +19,7 @@ MESSAGES = {
     "declined_purchase": "{name} nie kupił {field_name}. Licytacja się rozpoczyna.",
     "no_pending_purchase": "Brak decyzji o zakupie.",
     "purchase_required": "{name} musi najpierw zdecydować o zakupie.",
+    "payment_required": "{name} musi najpierw uregulować płatność.",
     "tax_paid": "Podatek: {field_name}, Koszt: {cost}",
     "go_to_jail": "{name} idzie do więzienia!",
     # Trade Messages
@@ -41,4 +43,16 @@ MESSAGES = {
     "not_your_auction_turn": "Nie twoja kolej licytacji.",
     "bid_too_low": "Oferta musi być wyższa niż obecna.",
     "cannot_afford_bid": "Nie stać cię na tę ofertę.",
+    # Mortgage Messages
+    "mortgaged": "{name} zastawia {field_name} za {amount}$",
+    "unmortgaged": "{name} wykupuje zastaw {field_name} za {amount}$",
+    "cannot_unmortgage": "Nie stać cię na wykup zastawu.",
+    "property_already_mortgaged": "Nieruchomość jest już zastawiona.",
+    "property_not_mortgaged": "Nieruchomość nie jest zastawiona.",
+    "property_not_owned": "Nie posiadasz tej nieruchomości.",
+    "property_mortgaged_no_rent": "Nieruchomość zastawiona — brak czynszu.",
+    "cannot_trade_mortgaged": "Nie można handlować zastawioną nieruchomością.",
+    "cannot_afford_rent": "{name} nie stać na czynsz {rent}$ dla {owner_name}. Zastaw nieruchomość!",
+    "cannot_afford_tax": "{name} nie stać na podatek {cost}$ za {field_name}. Zastaw nieruchomość!",
+    "still_cannot_afford": "{name} nadal nie stać na {amount}$ ({reason}).",
 }

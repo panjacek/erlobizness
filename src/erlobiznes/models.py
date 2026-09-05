@@ -24,3 +24,8 @@ class AuctionBid(BaseModel):
 
 class AuctionPass(BaseModel):
     player_idx: int
+
+
+class MortgageRequest(BaseModel):
+    player_idx: int
+    property_id: int
