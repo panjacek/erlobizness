@@ -588,6 +588,23 @@ class TestCoverageGaps:
         game.play_turn(p)
         assert p.money == 3000 + 400
 
+    def test_no_start_payment_when_jail_from_card(self, mocker):
+        from erlobiznes.cards import go_to_jail_card
+
+        game = ErloGame()
+        p = game.players[0]
+        p.position = 38
+        # Roll (4,5) → 9 steps → position 7 (red chance), crosses Start once
+        mocker.patch.object(game.dice, "roll", side_effect=[4, 5])
+        mocker.patch.object(
+            game.red_deck,
+            "draw",
+            side_effect=lambda g, pl: go_to_jail_card(g, pl) or "Go to JAIL.",
+        )
+        game.play_turn(p)
+        assert p.in_jail is True
+        assert p.money == 3000  # no 400 reward
+
     def test_trade_offer_wrong_player_rejected(self):
         game = ErloGame()
         game.propose_trade(1, 0, "Start", 100, "sell")
